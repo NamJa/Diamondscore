@@ -4,8 +4,8 @@ KBO 실시간 경기, 선수, 팀, 순위 정보를 제공하는 Jetpack Compose
 
 제품 요구사항과 구현 계획을 하나의 문서로 통합해 두었습니다.
 
-- [구현 계획](./docs/IMPLEMENTATION_PLAN_KO.md) — **단일 구현 계획** (개인 용도 · 백엔드 없음 · SofaScore 직접 호출). Step 1~8, 부록에 APK 추가 발견·공개배포 확장 정리
-- **Step-by-Step 사이트** (`docs/index.html` ~ `step-8.html`) — 계획을 GitHub Pages용 HTML/CSS로 렌더링. 아래 [배포](#github-pages-배포) 참고
+- **Codelabs 튜토리얼** (`docs/`) — 앱을 처음부터 따라 만드는 단계별 문서(Step 0~8). docsify 기반 GitHub Pages 사이트. 아래 [배포](#github-pages-배포) 참고
+- [구현 계획](./docs/IMPLEMENTATION_PLAN_KO.md) — 단일 계획서(설계 배경·데이터 계약·리스크). Codelabs가 참조하는 원본
 
 ## 기술 스택 (2026-08-23 기준)
 
@@ -29,12 +29,15 @@ SofaScore API (`api.sofascore.com/api/v1`), KBO `uniqueTournament.id = 11204`, 2
 
 ## GitHub Pages 배포
 
-Step-by-Step 사이트는 `docs/` 폴더에 정적 HTML/CSS로 들어 있습니다.
+Codelabs 튜토리얼은 `docs/` 폴더에 [docsify](https://docsify.js.org) SPA로 들어 있습니다.
 
 1. GitHub 저장소 → **Settings → Pages**
 2. **Source**: `Deploy from a branch`, **Branch**: `main` / 폴더 `/docs` 선택 → Save
-3. 몇 분 뒤 `https://<사용자>.github.io/<저장소>/` 에서 개요 페이지가 열립니다
+3. 몇 분 뒤 `https://namja.github.io/Diamondscore/` 에서 소개 페이지가 열립니다
 
-- 파일 구성: `docs/index.html`(개요) + `docs/step-1.html` ~ `step-8.html` + `docs/assets/site.css`
-- 콘텐츠 수정은 `docs/build_site.py`의 데이터를 고친 뒤 `python3 docs/build_site.py`로 재생성합니다 (HTML을 직접 편집하지 않음)
-- `.nojekyll`로 Jekyll 처리를 끕니다 (순수 정적 사이트)
+- 파일 구성: `docs/index.html`(docsify 부트스트랩) · `docs/README.md`(홈) · `docs/_sidebar.md`(네비) · `docs/labs/step-0~8.md`(코드랩) · `docs/assets/codelab.css`
+- 콘텐츠 수정은 해당 `labs/step-N.md`를 직접 편집하면 됩니다(빌드 단계 없음 — docsify가 런타임 렌더)
+- `.nojekyll`로 Jekyll을 끕니다 (docsify는 `_sidebar.md` 등 언더스코어 파일을 씀)
+- docsify·Prism은 jsDelivr CDN에서 로드하므로 인터넷 연결이 필요합니다
+
+로컬 미리보기: `python3 -m http.server -d docs 8000` → `http://localhost:8000`

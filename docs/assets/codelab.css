@@ -1,0 +1,85 @@
+/* DiamondScore Codelabs — docsify vue 테마 위 커스텀 (레퍼런스 codelabs 스타일) */
+:root {
+  --theme-color: #ae0d1d;      /* KBO 리그 primary */
+  --accent: #44a0cb;
+  --chip-bg: #f0f2f5;
+  --ok: #0f7a4d; --ok-bg: #e7f6ee;
+  --warn: #a8710a; --warn-bg: #fbf1dd;
+  --danger: #b0202f; --danger-bg: #fbe9eb;
+  --tip: #2b6cb0; --tip-bg: #e8f1fb;
+}
+
+/* 사이드바 그룹 헤더 */
+.sidebar-nav > ul > li > strong,
+.sidebar-nav p strong { color: var(--theme-color); font-size: .8rem; letter-spacing: .02em; }
+.sidebar-nav li a { font-size: .92rem; }
+
+/* 본문 폭·가독성 */
+.markdown-section { max-width: 820px; }
+.markdown-section h1 { font-size: 1.9rem; }
+.markdown-section h2 {
+  margin-top: 2.4rem; padding: .3rem 0 .4rem; border-bottom: 2px solid #eee;
+}
+.markdown-section h2::before {
+  content: "STEP"; display: inline-block; font-size: .62rem; font-weight: 700;
+  color: #fff; background: var(--accent); padding: .12rem .5rem; border-radius: 999px;
+  margin-right: .5rem; vertical-align: middle; letter-spacing: .05em;
+}
+
+/* 코드 */
+.markdown-section pre { border-radius: 8px; }
+.markdown-section code { font-size: .86em; }
+
+/* 상단 메타 칩 (소요·난이도) — 코드펜스 아닌 인라인 HTML로 사용 */
+.chips { display: flex; gap: .5rem; flex-wrap: wrap; margin: .2rem 0 1.2rem; }
+.chip {
+  font-size: .78rem; font-weight: 600; padding: .25rem .7rem; border-radius: 999px;
+  background: var(--chip-bg); color: #444;
+}
+.chip.time::before { content: "⏱ "; }
+.chip.diff::before { content: "★ "; }
+.chip.goal::before { content: "🎯 "; }
+
+/* 콜아웃 (blockquote 대체용 클래스) */
+.callout { border-radius: 8px; padding: .8rem 1rem; margin: 1.1rem 0; border-left: 4px solid; }
+.callout p:first-child { margin-top: 0; } .callout p:last-child { margin-bottom: 0; }
+.callout.tip { background: var(--tip-bg); border-color: var(--tip); }
+.callout.ok { background: var(--ok-bg); border-color: var(--ok); }
+.callout.warn { background: var(--warn-bg); border-color: var(--warn); }
+.callout.danger { background: var(--danger-bg); border-color: var(--danger); }
+.callout .t { font-weight: 700; display: block; margin-bottom: .2rem; }
+
+/* 체크포인트 박스 */
+.checkpoint {
+  background: var(--ok-bg); border: 1px solid var(--ok); border-radius: 8px;
+  padding: .8rem 1rem; margin: 1.2rem 0;
+}
+.checkpoint .t { font-weight: 700; color: var(--ok); }
+.checkpoint .t::before { content: "✅ 체크포인트 — "; }
+
+/* 홈 코드랩 카드 */
+.lab-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin: 1.2rem 0; }
+.lab-cards a {
+  display: block; border: 1px solid #e4e7ec; border-radius: 10px; padding: 1rem;
+  text-decoration: none !important; transition: transform .1s, border-color .1s; color: inherit;
+}
+.lab-cards a:hover { transform: translateY(-2px); border-color: var(--accent); }
+.lab-cards .n { color: var(--theme-color); font-weight: 700; font-size: .82rem; }
+.lab-cards .h { font-weight: 600; display: block; margin: .2rem 0; }
+.lab-cards .d { color: #667; font-size: .8rem; }
+
+/* 진행률 바 */
+.pbar { height: 12px; background: var(--chip-bg); border-radius: 999px; overflow: hidden; }
+.pbar span { display: block; height: 100%; background: linear-gradient(90deg, var(--theme-color), var(--accent)); }
+.pnote { font-size: .85rem; color: #667; margin-top: .4rem; }
+
+/* 단계 완료 토글 */
+.lab-done { margin: 2.5rem 0 1rem; text-align: center; }
+.done-btn {
+  font-size: .95rem; font-weight: 600; padding: .7rem 1.4rem; border-radius: 999px;
+  border: 2px solid var(--theme-color); background: #fff; color: var(--theme-color); cursor: pointer;
+}
+.done-btn.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+
+/* 단계 이동 pager */
+.pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2rem; padding-top: 1.2rem; border-top: 1px solid #eee; }

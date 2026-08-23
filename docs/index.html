@@ -1,44 +1,78 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>개요 · DiamondScore</title>
-<link rel="stylesheet" href="assets/site.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiamondScore — KBO 앱 Codelabs</title>
+  <meta name="description" content="SofaScore API로 KBO 실시간 Android 앱을 처음부터 만드는 단계별 따라하기 튜토리얼">
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
+  <link rel="stylesheet" href="assets/codelab.css">
 </head>
 <body>
-<header class="top">
-  <a class="brand" href="index.html">◆ DiamondScore</a>
-  <span class="stack">Kotlin 2.4 · Compose · Retrofit 3 · Coil 3 · KSP2</span>
-</header>
-<nav class="steps"><a href="index.html" class="active">개요</a><a href="step-1.html">Step 1</a><a href="step-2.html">Step 2</a><a href="step-3.html">Step 3</a><a href="step-4.html">Step 4</a><a href="step-5.html">Step 5</a><a href="step-6.html">Step 6</a><a href="step-7.html">Step 7</a><a href="step-8.html">Step 8</a></nav>
-<main>
-
-<section class="hero">
-  <span class="step0">Step 0 · 개요</span>
-  <h1>DiamondScore 구현 계획</h1>
-  <p class="sub">KBO 실시간 Android 앱 · SofaScore API · Step-by-Step</p>
-</section>
-
-<section>
-  <h2>먼저 알아야 할 것</h2>
-  <div class="ctx-grid"><article class="ctx danger"><h3>데이터 제약 — 득점 전용</h3><p>SofaScore의 KBO 데이터는 일정·이닝별 득점·순위·팀/구장/감독만 제공한다. 볼카운트·주자·투수/타자·라인업·박스스코어·선수 기록·문자중계는 <strong>404</strong>다. 이 커버리지가 P0/P1 범위를 결정한다.</p></article><article class="ctx ok"><h3>단일 요청 라이브</h3><p><code>GET /sport/baseball/events/live</code> 한 번이 진행 중인 KBO 전 경기를 반환한다. 경기별 개별 폴링이 필요 없어 트래픽·배터리·차단 위험이 모두 낮다.</p></article><article class="ctx warn"><h3>최우선 리스크 — 403</h3><p>분석 환경에서 API가 403이었다(출처 IP 기반 추정). 실기기 접근은 미검증. <strong>Step 1(DS-001)</strong>이 코드 작성 전 관문이다 — 실패 시 보조 소스로 재설계.</p></article></div>
-</section>
-
-<section>
-  <h2>구현 로드맵 (Step 1 → 8)</h2>
-  <p class="lead">각 단계는 “구현 → 자동 테스트 → 실기기 확인”으로 끝낸다. 카드를 눌러 상세로 이동.</p>
-  <div class="road-grid"><a class="road" href="step-1.html"><span class="rn">Step 1</span><span class="rt">접근성·스키마 스파이크</span><span class="rd">0.5일</span><span class="rg">실기기 403 여부와 라이브 스키마를 코드 전에 확인</span></a><a class="road" href="step-2.html"><span class="rn">Step 2</span><span class="rt">프로젝트 부트스트랩</span><span class="rd">0.5일</span><span class="rg">Compose·Hilt·Retrofit 3·Room·Coil 3 뼈대와 CI</span></a><a class="road" href="step-3.html"><span class="rn">Step 3</span><span class="rt">네트워크·매핑 계층</span><span class="rd">1.5일</span><span class="rg">DTO·매퍼·함정 7개 테스트로 고정</span></a><a class="road" href="step-4.html"><span class="rn">Step 4</span><span class="rt">Room + Repository + 프리페치</span><span class="rd">2일</span><span class="rg">시즌 전체를 로컬 SSOT로, 오프라인 날짜 탐색</span></a><a class="road" href="step-5.html"><span class="rn">Step 5</span><span class="rt">경기 목록</span><span class="rd">1.5일</span><span class="rg">날짜 네비게이션 + 라이브 폴링 1요청</span></a><a class="road" href="step-6.html"><span class="rn">Step 6</span><span class="rt">경기 상세</span><span class="rd">1.5일</span><span class="rg">동적 라인스코어(연장) + 종료 확정</span></a><a class="road" href="step-7.html"><span class="rn">Step 7</span><span class="rt">순위·팀·즐겨찾기</span><span class="rd">1.5일</span><span class="rg">승-패-무 파생, 팀 상세, 즐겨찾기</span></a><a class="road" href="step-8.html"><span class="rn">Step 8</span><span class="rt">마감</span><span class="rd">1.5일</span><span class="rg">접근성·적응형·성능·R8 릴리스</span></a></div>
-</section>
-
-<section class="startnow">
-  <h2>지금 시작할 3가지</h2>
-  <ol><li><code>DS-001</code> 실기기에서 SofaScore API 호출 성공 확인. 계획 전체의 전제. 가장 먼저.</li><li><code>DS-002</code> 게임 데이 18:30 KST 경기에서 라이브 응답 3시간 기록. 스크립트를 미리 준비.</li><li><code>DS-010</code> Compose 프로젝트 생성. DS-002 대기 중 병행.</li></ol>
-</section>
-
-</main>
-<footer>
-  <p>단일 계획 문서: <a href="IMPLEMENTATION_PLAN_KO.md">IMPLEMENTATION_PLAN_KO.md</a> · 이 사이트는 <code>docs/build_site.py</code>로 생성됨</p>
-</footer>
+  <div id="app">불러오는 중…</div>
+  <script>
+    window.$docsify = {
+      name: 'DiamondScore Codelabs',
+      repo: 'NamJa/Diamondscore',
+      loadSidebar: true,
+      subMaxLevel: 2,
+      auto2top: true,
+      maxLevel: 3,
+      alias: { '/.*/_sidebar.md': '/_sidebar.md' },
+      search: {
+        placeholder: '검색…',
+        noData: '결과 없음',
+        depth: 3,
+      },
+      // 단계 완료 체크 + 진행률 (localStorage). 레퍼런스 codelabs의 진행 UX를 가볍게 재현.
+      plugins: [
+        function progress(hook, vm) {
+          var KEY = 'diamondscore_done';
+          function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
+          function save(o) { try { localStorage.setItem(KEY, JSON.stringify(o)); } catch (e) {} }
+          hook.doneEach(function () {
+            var path = (vm.route && vm.route.path) || location.hash;
+            var main = document.querySelector('.markdown-section');
+            if (!main) return;
+            // 홈: 전체 진행률 요약
+            var summary = document.getElementById('lab-progress');
+            if (summary) {
+              var done = load();
+              var total = 9, cleared = 0;
+              for (var i = 0; i <= 8; i++) if (done['/labs/step-' + i]) cleared++;
+              var pct = Math.round((cleared / total) * 100);
+              summary.innerHTML =
+                '<div class="pbar"><span style="width:' + pct + '%"></span></div>' +
+                '<p class="pnote">' + cleared + ' / ' + total + ' 단계 완료 · ' + pct + '%</p>';
+            }
+            // 랩 페이지: 하단에 완료 토글
+            if (path.indexOf('/labs/step-') === 0) {
+              var done = load();
+              var wrap = document.createElement('div');
+              wrap.className = 'lab-done';
+              var on = !!done[path];
+              wrap.innerHTML = '<button class="done-btn' + (on ? ' on' : '') + '">' +
+                (on ? '✓ 이 단계 완료함 (되돌리기)' : '이 단계 완료로 표시') + '</button>';
+              main.appendChild(wrap);
+              wrap.querySelector('button').addEventListener('click', function () {
+                var d = load();
+                if (d[path]) delete d[path]; else d[path] = Date.now();
+                save(d);
+                vm.route && location.reload();
+              });
+            }
+          });
+        }
+      ],
+    };
+  </script>
+  <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/docsify@4/lib/plugins/zoom-image.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-kotlin.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-groovy.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-toml.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js"></script>
 </body>
 </html>
