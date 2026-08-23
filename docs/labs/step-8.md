@@ -16,21 +16,18 @@ fun StandingsScreen(vm: StandingsViewModel = hiltViewModel(), onTeam: (Long) -> 
         TopBar("순위", trailing = { SeasonChip("2026 정규시즌") })
         StandingsHeader()   // # 팀 경기 승·패·무 승률 GB
         LazyColumn {
-            itemsIndexed(rows, key = { _, s -> s.team.id }) { i, s ->
-                StandingRow(s) { onTeam(s.team.id) }
-                if (i == 4) item { PlayoffDivider() }   // 5위 다음 진출선
+            rows.forEachIndexed { i, s ->
+                item(key = s.team.id) { StandingRow(s) { onTeam(s.team.id) } }
+                if (i == 4) item("po") { PlayoffDivider() }   // 5위 다음 진출선
             }
         }
     }
 }
 ```
 
-<div class="callout tip"><span class="t">공급 안 되는 컬럼은 숨긴다</span>
-값이 없는 컬럼은 <code>-</code> 대신 컬럼 자체를 그리지 않습니다. 동률 순서는 앱에서 재계산하지 않고 <code>position</code>을 그대로 씁니다. 무승부는 <code>games - wins - losses</code> 파생(Step 3 함정 1).
+<div class="callout tip"><span class="t">진출선은 LazyColumn DSL로</span>
+<code>item {}</code>은 <code>LazyListScope</code>에서만 호출됩니다 — <code>itemsIndexed</code>의 항목 람다 <strong>안에서는</strong> 쓸 수 없습니다. 위처럼 <code>rows.forEachIndexed</code>로 각 행을 <code>item</code>으로 내보내고, 5위 다음에 별도 <code>item</code>으로 <code>PlayoffDivider</code>를 끼웁니다. 공급 안 되는 컬럼은 <code>-</code>가 아니라 컬럼 자체를 숨기고, 동률은 <code>position</code>을 그대로 씁니다(무승부는 파생, Step 3 함정 1).
 </div>
-
-`itemsIndexed`로 5위 다음에 `PlayoffDivider`를 끼우는 방식은 간단하지만, 목록이 길면 `LazyColumn`
-DSL에서 `item {}`을 조건 분기로 넣는 편이 더 명확합니다.
 
 ## 2. 팀 상세 — 컬러 헤더
 
@@ -58,7 +55,7 @@ fun TeamHeader(team: TeamRef, record: String, isFav: Boolean, onFav: () -> Unit,
                 Box(Modifier.size(56.dp).clip(CircleShape)
                     .background(Color.White.copy(alpha = .15f))
                     .border(2.dp, Color.White.copy(alpha = .5f), CircleShape), Alignment.Center) {
-                    Text(team.short, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(teamShort(team.id), color = Color.White, fontWeight = FontWeight.Bold)
                 }
                 Column {
                     Text(team.nameKo, color = Color.White, style = MaterialTheme.typography.headlineSmall,

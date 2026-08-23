@@ -11,7 +11,14 @@
 </div>
 
 모든 컴포넌트는 `com.diamondscore.core.designsystem` 패키지에 두고, Step 2의 `DsColors`·`teamColor`·
-`ScoreNumber`와 Step 3의 도메인 모델(`GameSummary`·`GameStatus`·`InningRuns`·`Standing`)을 씁니다.
+`teamShort`·`ScoreNumber`와 Step 3의 도메인 모델(`GameSummary`·`GameStatus`·`InningRuns`·`Standing`)을 씁니다.
+
+<div class="callout tip"><span class="t">코드에 나오는 작은 헬퍼들</span>
+아래 코드의 <code>DsIcon</code>(Icon 래퍼), <code>CenterColumn</code>(가운데 정렬 Column), <code>HeaderCell</code>·
+<code>TeamCell</code>·<code>TotalCell</code>(라인스코어 셀), <code>DsTabIcon</code>은 한 줄짜리 보조 Composable입니다.
+처음 나올 때 같은 파일에 간단히 정의하세요(예: <code>@Composable fun DsIcon(v: ImageVector, tint: Color = LocalContentColor.current, size: Dp = 24.dp) = Icon(v, null, Modifier.size(size), tint)</code>).
+Preview의 <code>sampleLive</code> 등은 <code>GameSummary(...)</code>를 손으로 채운 <strong>샘플 데이터</strong>입니다 — 목업 값(LG 2 : KIA 3 등)으로 만들어 두면 4상태를 한눈에 볼 수 있습니다.
+</div>
 
 ## 1. 하단 네비게이션 (DsBottomBar)
 
@@ -138,7 +145,7 @@ fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>, away
         border = BorderStroke(1.dp, Color(0xFF232A34))) {
         Row(Modifier.horizontalScroll(rememberScrollState())) {    // 연장 시 가로 스크롤
             Column {
-                HeaderCell(""); TeamCell(away.short); TeamCell(home.short)
+                HeaderCell(""); TeamCell(teamShort(away.id)); TeamCell(teamShort(home.id))
             }
             for (n in 1..count) {
                 val r = innings.firstOrNull { it.number == n }

@@ -287,6 +287,7 @@ val KBO_TEAMS: Map<Long, KboTeam> = listOf(
 ).associateBy { it.id }
 
 fun teamNameKo(id: Long, fallback: String): String = KBO_TEAMS[id]?.nameKo ?: fallback
+fun teamShort(id: Long): String = KBO_TEAMS[id]?.short ?: "?"
 fun teamColor(id: Long): Color = KBO_TEAMS[id]?.color ?: Color(0xFF6B7280)
 ```
 

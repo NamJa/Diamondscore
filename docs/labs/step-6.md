@@ -7,9 +7,11 @@
 
 ## 1. UiState와 ViewModel
 
-`feature/games/GamesViewModel.kt`:
+`feature/games/GamesViewModel.kt` (신선도 enum은 `domain/model`에 두어도 됩니다):
 
 ```kotlin
+enum class Freshness { FRESH, STALE, OFFLINE }
+
 data class GamesUiState(
     val date: LocalDate = LocalDate.now(SEOUL),
     val games: List<GameSummary> = emptyList(),

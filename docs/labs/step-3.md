@@ -4,18 +4,28 @@
 
 SofaScore 응답을 앱이 쓸 모양으로 바꿉니다. 실측에서 발견한 **함정 7개**(무승부 필드 없음, 연장 이중 표현, 동적 이닝 키 등)를 각각 테스트로 막는 것이 이 Step의 핵심입니다.
 
-## 1. 도메인 모델
+## 1. 공통 상수와 도메인 모델
 
-`core/model/Models.kt`:
+먼저 여러 화면이 공유할 시간 상수를 한곳에 둡니다. `core/common/Time.kt`:
+
+```kotlin
+package com.diamondscore.core.common
+
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+val SEOUL: ZoneId = ZoneId.of("Asia/Seoul")
+val dateFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("M월 d일 E", Locale.KOREAN) // 8월 2일 토
+```
+
+`domain/model/Models.kt`:
 
 ```kotlin
 package com.diamondscore.domain.model
 
 import java.time.Instant
 import java.time.LocalDate
-
-@JvmInline value class EventId(val value: Long)
-@JvmInline value class TeamId(val value: Long)
 
 enum class GameStatus { SCHEDULED, LIVE, FINAL, CANCELED, POSTPONED, SUSPENDED, UNKNOWN }
 enum class Winner { HOME, AWAY, DRAW }
@@ -34,7 +44,17 @@ data class GameSummary(
     val homeRuns: Int?, val awayRuns: Int?,   // 경기 전 null (0 아님)
     val winner: Winner?,
     val wentExtra: Boolean,
+    val venueShort: String? = null,  // 도시명(예: 광주) — 목록엔 없을 수 있음
     val changeTimestamp: Long?,
+)
+
+/** 상세 화면용 — 요약 + 라인스코어 + 구장/감독. */
+data class GameDetail(
+    val summary: GameSummary,
+    val innings: List<InningRuns>,
+    val venueName: String?, val capacity: Int?,
+    val homeManager: String?, val awayManager: String?,
+    val seasonName: String?,
 )
 
 data class Standing(
@@ -70,7 +90,13 @@ import kotlinx.serialization.Serializable
     val homeScore: ScoreDto? = null,
     val awayScore: ScoreDto? = null,
     val changes: ChangesDto? = null,
+    // 상세(/event/{id})에서만 채워지는 필드 — 목록 응답에선 null
+    val venue: VenueDto? = null,
+    val season: SeasonDto? = null,
 )
+@Serializable data class VenueDto(val stadium: StadiumDto? = null, val city: CityDto? = null)
+@Serializable data class StadiumDto(val name: String? = null, val capacity: Int? = null)
+@Serializable data class CityDto(val name: String? = null)
 @Serializable data class StatusDto(val code: Int, val description: String, val type: String)
 @Serializable data class TeamDto(val id: Long, val name: String, val nameCode: String? = null)
 @Serializable data class ScoreDto(
@@ -123,7 +149,7 @@ interface SofaScoreApi {
     suspend fun liveBaseball(): EventsDto
 
     @GET("event/{id}")
-    suspend fun event(@Path("id") id: Long): EventDetailDto
+    suspend fun event(@Path("id") id: Long): EventDto   // 목록·상세 공통 객체 (venue·season이 추가로 채워짐)
 }
 ```
 
@@ -181,11 +207,9 @@ package com.diamondscore.data.remote.mapper
 import com.diamondscore.data.remote.dto.*
 import com.diamondscore.domain.model.*
 import com.diamondscore.core.designsystem.teamNameKo
+import com.diamondscore.core.common.SEOUL
 import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
 
-private val SEOUL = ZoneId.of("Asia/Seoul")
 private val INNING = Regex("""inning(\d+)""")
 
 fun StatusDto.toDomain(): GameStatus = when (type) {   // 함정 6: type 기준
@@ -223,9 +247,20 @@ fun EventDto.toSummary(): GameSummary {
             1 -> Winner.HOME; 2 -> Winner.AWAY; 3 -> Winner.DRAW; else -> null
         } else null,
         wentExtra = status.code == 110 || innings.any { it.number > 9 },
+        venueShort = venue?.city?.name,
         changeTimestamp = changes?.changeTimestamp,
     )
 }
+
+/** /event/{id} 응답을 상세 도메인으로. */
+fun EventDto.toDetail() = GameDetail(
+    summary = toSummary(),
+    innings = parseInnings(homeScore?.innings ?: emptyMap(), awayScore?.innings ?: emptyMap()),
+    venueName = venue?.stadium?.name,
+    capacity = venue?.stadium?.capacity,
+    homeManager = null, awayManager = null,   // 감독명은 KBO 응답에 없으면 null (§3.3)
+    seasonName = season?.name,
+)
 
 fun StandingRowDto.toDomain() = Standing(
     position = position, team = team.toRef(),

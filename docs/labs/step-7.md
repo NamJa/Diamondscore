@@ -56,13 +56,13 @@ private fun TeamScoreRow(t: TeamRef, runs: Int?, side: String, win: Boolean) {
         verticalAlignment = Alignment.CenterVertically) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(40.dp).clip(CircleShape).background(teamColor(t.id)), Alignment.Center) {
-                Text(t.short, color = Color.White, style = MaterialTheme.typography.labelMedium,
+                Text(teamShort(t.id), color = Color.White, style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold)
             }
             Column {
                 Text(t.nameKo, style = MaterialTheme.typography.titleMedium,
                     fontWeight = if (win) FontWeight.Bold else FontWeight.Normal,
-                    color = if (win) MaterialTheme.colorScheme.onSurface else DsColors.muted2.takeIf { !win } ?: MaterialTheme.colorScheme.onSurface)
+                    color = if (win) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
                 Text(if (win) "$side · 승" else side, style = MaterialTheme.typography.labelSmall, color = DsColors.muted2)
             }
         }
