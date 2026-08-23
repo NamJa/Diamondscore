@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 8 — 마감 — 접근성·적응형·성능·릴리스 · DiamondScore</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="index.html">◆ DiamondScore</a>
+  <span class="stack">Kotlin 2.4 · Compose · Retrofit 3 · Coil 3 · KSP2</span>
+</header>
+<nav class="steps"><a href="index.html">개요</a><a href="step-1.html">Step 1</a><a href="step-2.html">Step 2</a><a href="step-3.html">Step 3</a><a href="step-4.html">Step 4</a><a href="step-5.html">Step 5</a><a href="step-6.html">Step 6</a><a href="step-7.html">Step 7</a><a href="step-8.html" class="active">Step 8</a></nav>
+<main>
+
+<section class="hero step">
+  <span class="step0">Step 8 / 8 · 1.5일</span>
+  <h1>마감 — 접근성·적응형·성능·릴리스 </h1>
+</section>
+
+<div class="meta-box">
+  <p><strong>목표</strong> 접근성·적응형 레이아웃·성능을 마무리하고 R8 릴리스 빌드를 검증한다.</p>
+  <p><strong>선행 조건</strong> Step 5~7 화면.</p>
+</div>
+
+<section>
+  <h2>세부 단계</h2>
+  <ol class="substeps">
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-070</span>
+        <span class="sub-title">설정</span><span class="ref">§1.3</span></div>
+      <ul class="tasks"><li>테마, 폴링 간격, <strong>데이터 출처 표기(SofaScore)</strong></li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-071</span>
+        <span class="sub-title">접근성</span><span class="ref">§1.5</span></div>
+      <ul class="tasks"><li>TalkBack 순서, 48dp, 200% 글꼴에서 라인스코어 스크롤</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-072</span>
+        <span class="sub-title">적응형 레이아웃</span><span class="ref">§5.5</span></div>
+      <ul class="tasks"><li>compact/medium/expanded 목록-상세</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-073</span>
+        <span class="sub-title">성능</span><span class="ref">§9</span></div>
+      <ul class="tasks"><li>Baseline Profile, 30분 라이브 배터리·메모리 측정</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-074</span>
+        <span class="sub-title">릴리스</span><span class="ref">§5.3</span></div>
+      <ul class="tasks"><li>R8 full mode 릴리스 빌드 검증(직렬화 DTO 생존 확인)</li></ul>
+    </li>
+  </ol>
+</section>
+
+<section class="done">
+  <h2>완료 조건</h2>
+  <ul class="check"><li>§1.6 SLO·수용 기준 통과, P0 회귀 0건</li><li>총 예상 10~11일(1인), 캘린더 2~3주(게임 데이 검증 포함)</li></ul>
+</section>
+
+<nav class="pager"><a href="step-7.html">← Step 7</a></nav>
+
+</main>
+<footer>
+  <p>단일 계획 문서: <a href="IMPLEMENTATION_PLAN_KO.md">IMPLEMENTATION_PLAN_KO.md</a> · 이 사이트는 <code>docs/build_site.py</code>로 생성됨</p>
+</footer>
+</body>
+</html>

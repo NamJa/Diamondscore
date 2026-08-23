@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 2 — 프로젝트 부트스트랩 · DiamondScore</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="index.html">◆ DiamondScore</a>
+  <span class="stack">Kotlin 2.4 · Compose · Retrofit 3 · Coil 3 · KSP2</span>
+</header>
+<nav class="steps"><a href="index.html">개요</a><a href="step-1.html">Step 1</a><a href="step-2.html" class="active">Step 2</a><a href="step-3.html">Step 3</a><a href="step-4.html">Step 4</a><a href="step-5.html">Step 5</a><a href="step-6.html">Step 6</a><a href="step-7.html">Step 7</a><a href="step-8.html">Step 8</a></nav>
+<main>
+
+<section class="hero step">
+  <span class="step0">Step 2 / 8 · 0.5일</span>
+  <h1>프로젝트 부트스트랩 </h1>
+</section>
+
+<div class="meta-box">
+  <p><strong>목표</strong> Kotlin 2.4 · Compose · Hilt · Retrofit 3 · Room · Coil 3 뼈대와 CI를 세운다.</p>
+  <p><strong>선행 조건</strong> DS-001 접근 확인(병행 가능).</p>
+</div>
+
+<section>
+  <h2>세부 단계</h2>
+  <ol class="substeps">
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-010</span>
+        <span class="sub-title">프로젝트·version catalog</span><span class="ref">§5.4 버전표</span></div>
+      <ul class="tasks"><li>Compose 프로젝트, version catalog (동적 버전 금지)</li><li><code>compileSdk 36</code> / <code>minSdk 26</code>, Kotlin 2.4.x, JDK 17 toolchain</li><li>Compose 컴파일러는 <code>plugin.compose</code>만 적용(별도 버전 pin 없음)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-011</span>
+        <span class="sub-title">의존성 (전부 KSP2)</span><span class="ref">§5.3</span></div>
+      <ul class="tasks"><li>Hilt(KSP2), Retrofit 3/OkHttp/kotlinx.serialization, Room(KSP2), Coil 3</li><li>kapt 미사용. Coil 3는 앱 OkHttp 인스턴스 공유</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-012</span>
+        <span class="sub-title">테마·리소스</span><span class="ref">§2.2 · §3.4-5</span></div>
+      <ul class="tasks"><li>Material 3 테마</li><li><strong>10개 구단 자체 컬러 토큰</strong> (API teamColors가 전부 동일 §3.4-5)</li><li>한국어 팀명 리소스 (API에 <code>ko</code> 없음 §2.2)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-013</span>
+        <span class="sub-title">CI</span></div>
+      <ul class="tasks"><li><code>assembleDebug</code> + unit test + lint</li></ul>
+    </li>
+  </ol>
+</section>
+
+<section class="done">
+  <h2>완료 조건</h2>
+  <ul class="check"><li>API 26/36 에뮬레이터에서 빈 앱 실행, 라이트/다크 preview 렌더</li><li>clean checkout 기준 CI build/lint/test 통과</li></ul>
+</section>
+
+<nav class="pager"><a href="step-1.html">← Step 1</a><a href="step-3.html">Step 3 →</a></nav>
+
+</main>
+<footer>
+  <p>단일 계획 문서: <a href="IMPLEMENTATION_PLAN_KO.md">IMPLEMENTATION_PLAN_KO.md</a> · 이 사이트는 <code>docs/build_site.py</code>로 생성됨</p>
+</footer>
+</body>
+</html>

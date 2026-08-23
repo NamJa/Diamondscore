@@ -1,0 +1,10 @@
+# 리버스 엔지니어링 산출물 — 저작권 코드, 절대 커밋 금지
+sofascore-apk/
+sofascore-decompiled/
+.DS_Store
+
+# SofaScore 리버스 엔지니어링 분석 문서 — 공개 저장소에서 제외
+docs/sofascore-endpoints.txt
+docs/sofascore-api-analysis.md
+docs/kbo-baseball-endpoints.md
+docs/extract-endpoints.py

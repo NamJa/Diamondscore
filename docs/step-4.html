@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 4 — Room + Repository + 시즌 프리페치 · DiamondScore</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="index.html">◆ DiamondScore</a>
+  <span class="stack">Kotlin 2.4 · Compose · Retrofit 3 · Coil 3 · KSP2</span>
+</header>
+<nav class="steps"><a href="index.html">개요</a><a href="step-1.html">Step 1</a><a href="step-2.html">Step 2</a><a href="step-3.html">Step 3</a><a href="step-4.html" class="active">Step 4</a><a href="step-5.html">Step 5</a><a href="step-6.html">Step 6</a><a href="step-7.html">Step 7</a><a href="step-8.html">Step 8</a></nav>
+<main>
+
+<section class="hero step">
+  <span class="step0">Step 4 / 8 · 2일</span>
+  <h1>Room + Repository + 시즌 프리페치 </h1>
+</section>
+
+<div class="meta-box">
+  <p><strong>목표</strong> 시즌 전체를 로컬 SSOT로 프리페치해, 날짜 조회를 네트워크 없이 로컬 쿼리로 처리한다.</p>
+  <p><strong>선행 조건</strong> Step 3 매퍼.</p>
+</div>
+
+<section>
+  <h2>세부 단계</h2>
+  <ol class="substeps">
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-030</span>
+        <span class="sub-title">Entity/DAO/Database</span><span class="ref">§6</span></div>
+      <ul class="tasks"><li>§6 엔티티 표대로. schema export 켜기</li><li>점수는 <code>InningRunEntity</code>로 정규화(스칼라 아님)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-031</span>
+        <span class="sub-title">시즌 프리페치 워커</span><span class="ref">§3.2</span></div>
+      <ul class="tasks"><li><code>next</code>/<code>last</code> 페이지 순회, 빈 배열까지, 최대 60페이지</li><li><code>leagueDate</code>는 Asia/Seoul로 변환 저장 (§3.2)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-032</span>
+        <span class="sub-title">GamesRepository</span><span class="ref">§6</span></div>
+      <ul class="tasks"><li><code>observeByDate(LocalDate)</code>는 Room에서 읽기</li><li><code>refresh*</code>는 네트워크 → 트랜잭션 upsert</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-033</span>
+        <span class="sub-title">쓰기 최적화</span><span class="ref">§6</span></div>
+      <ul class="tasks"><li><code>changeTimestamp</code> 동일 시 DB 쓰기 스킵</li><li>single-flight, <code>DataFreshness</code> 상태</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-034</span>
+        <span class="sub-title">통합 테스트</span><span class="ref">§9</span></div>
+      <ul class="tasks"><li>캐시 히트, 오프라인, 프리페치 중단·재개, 롤백</li></ul>
+    </li>
+  </ol>
+</section>
+
+<section class="done">
+  <h2>완료 조건</h2>
+  <ul class="check"><li>비행기 모드에서 시즌 전체 일정을 날짜 이동으로 탐색할 수 있다</li></ul>
+</section>
+
+<nav class="pager"><a href="step-3.html">← Step 3</a><a href="step-5.html">Step 5 →</a></nav>
+
+</main>
+<footer>
+  <p>단일 계획 문서: <a href="IMPLEMENTATION_PLAN_KO.md">IMPLEMENTATION_PLAN_KO.md</a> · 이 사이트는 <code>docs/build_site.py</code>로 생성됨</p>
+</footer>
+</body>
+</html>

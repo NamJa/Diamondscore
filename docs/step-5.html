@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 5 — 경기 목록 · DiamondScore</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="index.html">◆ DiamondScore</a>
+  <span class="stack">Kotlin 2.4 · Compose · Retrofit 3 · Coil 3 · KSP2</span>
+</header>
+<nav class="steps"><a href="index.html">개요</a><a href="step-1.html">Step 1</a><a href="step-2.html">Step 2</a><a href="step-3.html">Step 3</a><a href="step-4.html">Step 4</a><a href="step-5.html" class="active">Step 5</a><a href="step-6.html">Step 6</a><a href="step-7.html">Step 7</a><a href="step-8.html">Step 8</a></nav>
+<main>
+
+<section class="hero step">
+  <span class="step0">Step 5 / 8 · 1.5일</span>
+  <h1>경기 목록 </h1>
+</section>
+
+<div class="meta-box">
+  <p><strong>목표</strong> 날짜별 경기 목록과 라이브 자동 갱신(단일 요청)을 완성한다.</p>
+  <p><strong>선행 조건</strong> Step 4 Repository.</p>
+</div>
+
+<section>
+  <h2>세부 단계</h2>
+  <ol class="substeps">
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-040</span>
+        <span class="sub-title">ViewModel·UiState</span><span class="ref">§1.3</span></div>
+      <ul class="tasks"><li><code>GamesUiState</code>(날짜, 섹션, freshness, error)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-041</span>
+        <span class="sub-title">날짜 네비게이션</span><span class="ref">§1.3</span></div>
+      <ul class="tasks"><li>이전/다음/오늘, <code>SavedStateHandle</code>로 선택 날짜 보존</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-042</span>
+        <span class="sub-title">경기 카드</span><span class="ref">§3.4-4</span></div>
+      <ul class="tasks"><li>4종 상태(예정/진행/종료/취소·연기)</li><li><strong>원정팀 먼저 표시</strong> (§3.4-4)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-043</span>
+        <span class="sub-title">라이브 폴링</span><span class="ref">§7.1 · §7.2</span></div>
+      <ul class="tasks"><li><code>LivePoller</code> + <code>/events/live</code>, STARTED에서만, jitter·backoff</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-044</span>
+        <span class="sub-title">상태 UI</span><span class="ref">§1.3</span></div>
+      <ul class="tasks"><li>loading / empty / error / stale</li></ul>
+    </li>
+  </ol>
+</section>
+
+<section class="done">
+  <h2>완료 조건</h2>
+  <ul class="check"><li>경기일 30분 켜두면 점수가 자동 갱신되고, 홈→복귀 시 폴링이 정확히 멈췄다 재개된다</li></ul>
+</section>
+
+<nav class="pager"><a href="step-4.html">← Step 4</a><a href="step-6.html">Step 6 →</a></nav>
+
+</main>
+<footer>
+  <p>단일 계획 문서: <a href="IMPLEMENTATION_PLAN_KO.md">IMPLEMENTATION_PLAN_KO.md</a> · 이 사이트는 <code>docs/build_site.py</code>로 생성됨</p>
+</footer>
+</body>
+</html>

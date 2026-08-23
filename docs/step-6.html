@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 6 — 경기 상세 · DiamondScore</title>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="index.html">◆ DiamondScore</a>
+  <span class="stack">Kotlin 2.4 · Compose · Retrofit 3 · Coil 3 · KSP2</span>
+</header>
+<nav class="steps"><a href="index.html">개요</a><a href="step-1.html">Step 1</a><a href="step-2.html">Step 2</a><a href="step-3.html">Step 3</a><a href="step-4.html">Step 4</a><a href="step-5.html">Step 5</a><a href="step-6.html" class="active">Step 6</a><a href="step-7.html">Step 7</a><a href="step-8.html">Step 8</a></nav>
+<main>
+
+<section class="hero step">
+  <span class="step0">Step 6 / 8 · 1.5일</span>
+  <h1>경기 상세 </h1>
+</section>
+
+<div class="meta-box">
+  <p><strong>목표</strong> 동적 라인스코어(연장 포함)와 종료 확정을 구현한다. 범위 밖 UI는 만들지 않는다.</p>
+  <p><strong>선행 조건</strong> Step 5.</p>
+</div>
+
+<section>
+  <h2>세부 단계</h2>
+  <ol class="substeps">
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-050</span>
+        <span class="sub-title">스코어 헤더</span><span class="ref">§4.1</span></div>
+      <ul class="tasks"><li>상태 라벨은 <code>status.description</code> 원문 표시(추정 금지)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-051</span>
+        <span class="sub-title">라인스코어 테이블</span><span class="ref">§4.2</span></div>
+      <ul class="tasks"><li>동적 이닝, 연장 가로 스크롤, 미진행 이닝 구분</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-052</span>
+        <span class="sub-title">정보 섹션</span><span class="ref">§3.3</span></div>
+      <ul class="tasks"><li>구장·감독·시즌·라운드</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-053</span>
+        <span class="sub-title">상세 폴링·종료 확정</span><span class="ref">§7.3</span></div>
+      <ul class="tasks"><li><code>FINAL</code> 전환 직후 1회 확정 조회 (§7.3)</li></ul>
+    </li>
+    <li class="sub">
+      <div class="sub-head"><span class="dsid">DS-054</span>
+        <span class="sub-title">범위 밖 확인</span><span class="ref">§1.2</span></div>
+      <ul class="tasks"><li>볼카운트·주자·라인업 영역을 <strong>만들지 않음</strong>을 코드 리뷰에서 확인</li></ul>
+    </li>
+  </ol>
+</section>
+
+<section class="done">
+  <h2>완료 조건</h2>
+  <ul class="check"><li>9이닝 / 연장 / 취소 / 미진행 fixture 골든 시나리오 통과</li></ul>
+</section>
+
+<nav class="pager"><a href="step-5.html">← Step 5</a><a href="step-7.html">Step 7 →</a></nav>
+
+</main>
+<footer>
+  <p>단일 계획 문서: <a href="IMPLEMENTATION_PLAN_KO.md">IMPLEMENTATION_PLAN_KO.md</a> · 이 사이트는 <code>docs/build_site.py</code>로 생성됨</p>
+</footer>
+</body>
+</html>
