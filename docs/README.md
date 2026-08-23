@@ -8,6 +8,7 @@
 **만드는 것**: 오늘 경기 목록 · 라이브 스코어 · 이닝별 라인스코어 · 리그 순위 · 팀 상세 · 즐겨찾기.
 **스택**: Kotlin 2.4 · Jetpack Compose · Retrofit 3 · Coil 3 · Room · Hilt · KSP2.
 **데이터**: SofaScore 공개 엔드포인트(개인 용도, 백엔드 없음).
+**디자인**: 다크 우선 · Material 3 · 10개 구단 컬러. 각 화면은 확정된 목업을 그대로 구현합니다 — Step 5에서 공통 컴포넌트를 먼저 만들고, Step 6~8에서 화면에 조립합니다.
 
 <div id="lab-progress"></div>
 
@@ -30,13 +31,14 @@ SofaScore의 KBO 데이터는 <strong>일정·이닝별 득점·순위·팀/구�
 <div class="lab-cards">
 <a href="#/labs/step-0"><span class="n">Step 0</span><span class="h">개발 환경 준비</span><span class="d">⏱ 30분 · Android Studio·JDK·SDK·기기</span></a>
 <a href="#/labs/step-1"><span class="n">Step 1</span><span class="h">API 스파이크</span><span class="d">⏱ 30분 · 접근 확인·응답 저장</span></a>
-<a href="#/labs/step-2"><span class="n">Step 2</span><span class="h">프로젝트 부트스트랩</span><span class="d">⏱ 40분 · 프로젝트·의존성·테마</span></a>
+<a href="#/labs/step-2"><span class="n">Step 2</span><span class="h">부트스트랩 & 디자인 시스템</span><span class="d">⏱ 60분 · 의존성·다크 테마·구단 컬러</span></a>
 <a href="#/labs/step-3"><span class="n">Step 3</span><span class="h">네트워크·매핑</span><span class="d">⏱ 90분 · DTO·Retrofit·매퍼·테스트</span></a>
 <a href="#/labs/step-4"><span class="n">Step 4</span><span class="h">Room·프리페치</span><span class="d">⏱ 2시간 · DB·Repository·Worker</span></a>
-<a href="#/labs/step-5"><span class="n">Step 5</span><span class="h">경기 목록</span><span class="d">⏱ 90분 · ViewModel·Compose·폴링</span></a>
-<a href="#/labs/step-6"><span class="n">Step 6</span><span class="h">경기 상세</span><span class="d">⏱ 90분 · 라인스코어 테이블</span></a>
-<a href="#/labs/step-7"><span class="n">Step 7</span><span class="h">순위·팀·즐겨찾기</span><span class="d">⏱ 90분 · 순위표·팀 상세</span></a>
-<a href="#/labs/step-8"><span class="n">Step 8</span><span class="h">마감·릴리스</span><span class="d">⏱ 90분 · 접근성·성능·R8</span></a>
+<a href="#/labs/step-5"><span class="n">Step 5</span><span class="h">공통 컴포넌트</span><span class="d">⏱ 2시간 · 카드·라인스코어·상태 화면 + Preview</span></a>
+<a href="#/labs/step-6"><span class="n">Step 6</span><span class="h">경기 목록</span><span class="d">⏱ 90분 · 날짜 네비·라이브 폴링</span></a>
+<a href="#/labs/step-7"><span class="n">Step 7</span><span class="h">경기 상세</span><span class="d">⏱ 80분 · 스코어보드·라인스코어</span></a>
+<a href="#/labs/step-8"><span class="n">Step 8</span><span class="h">순위·팀·즐겨찾기</span><span class="d">⏱ 90분 · 순위표·팀 상세</span></a>
+<a href="#/labs/step-9"><span class="n">Step 9</span><span class="h">마감·릴리스</span><span class="d">⏱ 90분 · 상태·적응형·성능·R8</span></a>
 </div>
 
 <div class="callout tip">

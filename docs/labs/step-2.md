@@ -1,8 +1,8 @@
-# Step 2 · 프로젝트 부트스트랩
+# Step 2 · 프로젝트 부트스트랩 & 디자인 시스템
 
-<div class="chips"><span class="chip time">40분</span><span class="chip diff">쉬움</span><span class="chip goal">DiamondScore 프로젝트에 의존성·테마·팀 리소스를 세운다</span></div>
+<div class="chips"><span class="chip time">60분</span><span class="chip diff">쉬움</span><span class="chip goal">프로젝트·의존성 + 목업의 다크 테마·구단 컬러를 코드로 옮긴다</span></div>
 
-실제 프로젝트를 만들고 Kotlin 2.4 / Compose / Retrofit 3 / Room / Hilt / Coil 3를 version catalog로 고정합니다.
+실제 프로젝트를 만들고 Kotlin 2.4 / Compose / Retrofit 3 / Room / Hilt / Coil 3를 version catalog로 고정한 뒤, **확정된 목업의 디자인 토큰**(다크 팔레트·타이포·구단 컬러)을 Material 3 테마로 심습니다. 이후 모든 화면이 이 토큰을 씁니다.
 
 ## 1. 새 프로젝트 생성
 
@@ -188,9 +188,81 @@ class DiamondScoreApp : Application()
     ... >
 ```
 
-## 6. 10개 구단 리소스 (한국어 이름 + 팀 컬러)
+## 6. 다크 팔레트 — 목업의 토큰을 M3 ColorScheme으로
 
-API는 한국어 팀명을 주지 않고, `teamColors`가 전 구단 동일합니다. 그래서 **앱에 직접** 넣습니다.
+목업은 다크 우선입니다. 그 정확한 색값을 Material 3 `darkColorScheme`으로 옮기고, M3에 없는
+의미색(라이브 레드·골드·승/패)은 별도 객체로 둡니다.
+
+`app/src/main/java/com/diamondscore/core/designsystem/Color.kt`:
+
+```kotlin
+package com.diamondscore.core.designsystem
+
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.ui.graphics.Color
+
+val DsDarkColors = darkColorScheme(
+    primary          = Color(0xFFFF5563),   // 라이브·강조 레드
+    onPrimary        = Color(0xFF2A0A0E),
+    background       = Color(0xFF0E1116),
+    onBackground     = Color(0xFFE8ECF1),
+    surface          = Color(0xFF161B22),   // 카드
+    onSurface        = Color(0xFFE8ECF1),
+    surfaceVariant   = Color(0xFF1E242E),
+    onSurfaceVariant = Color(0xFF98A2B2),   // muted 텍스트
+    outline          = Color(0xFF2A313C),   // 카드 테두리·구분선
+)
+
+/** M3 역할로 안 잡히는 의미색 (목업 기준). */
+object DsColors {
+    val live       = Color(0xFFFF5563)
+    val liveDot    = Color(0xFFFF3A4C)
+    val gold       = Color(0xFFE6B450)   // 진출권·즐겨찾기
+    val win        = Color(0xFF3FB980)
+    val loss       = Color(0xFFFF6B78)
+    val staleBg    = Color(0xFF221D12)
+    val staleLine  = Color(0xFF4A3D1E)
+    val muted2     = Color(0xFF6B727E)   // 보조 캡션
+}
+```
+
+<div class="callout tip"><span class="t">라이트 테마</span>
+MVP는 다크 우선입니다. 라이트도 지원하려면 같은 역할로 <code>lightColorScheme</code>을 하나 더 만들고 §설정에서 전환합니다(Step 9). 지금은 다크만 만들어 진도를 냅니다.
+</div>
+
+## 7. 타이포그래피 — 점수는 등폭 숫자
+
+목업은 본문에 한글 산세리프, **점수·기록에는 등폭(tabular) 숫자**를 씁니다. 숫자가 자리에서
+흔들리지 않아야 라인스코어·순위표가 깔끔합니다.
+
+`app/src/main/java/com/diamondscore/core/designsystem/Type.kt`:
+
+```kotlin
+package com.diamondscore.core.designsystem
+
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+
+val DsTypography = Typography()   // M3 기본(시스템 한글 폰트) 사용
+
+/** 점수·이닝·승률 등 숫자 전용 — 등폭으로 자리 고정. */
+val ScoreNumber = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.SemiBold,
+)
+```
+
+<div class="callout tip"><span class="t">디자인 폰트를 그대로 쓰려면</span>
+목업은 <code>IBM Plex Sans KR / Mono</code>로 렌더했습니다. 앱에서 동일하게 하려면 폰트 파일을 <code>res/font/</code>에 넣고 <code>FontFamily(Font(R.font.…))</code>로 교체하세요. 튜토리얼은 진도를 위해 시스템 한글 폰트 + <code>Monospace</code>로 갑니다.
+</div>
+
+## 8. 구단 컬러 + 한국어 팀명
+
+API는 한국어 팀명을 주지 않고 `teamColors`가 전 구단 동일합니다. 목업의 구단 컬러와 한글명을
+**앱에 직접** 넣습니다.
 
 `app/src/main/java/com/diamondscore/core/designsystem/KboTeams.kt`:
 
@@ -199,35 +271,54 @@ package com.diamondscore.core.designsystem
 
 import androidx.compose.ui.graphics.Color
 
-data class KboTeam(val id: Long, val nameKo: String, val color: Color)
+data class KboTeam(val id: Long, val nameKo: String, val short: String, val color: Color)
 
 val KBO_TEAMS: Map<Long, KboTeam> = listOf(
-    KboTeam(188409, "KT 위즈",     Color(0xFF000000)),
-    KboTeam(188245, "삼성 라이온즈", Color(0xFF074CA1)),
-    KboTeam(188257, "LG 트윈스",    Color(0xFFC30452)),
-    KboTeam(188248, "두산 베어스",  Color(0xFF131230)),
-    KboTeam(188247, "KIA 타이거즈", Color(0xFFEA0029)),
-    KboTeam(188243, "한화 이글스",  Color(0xFFFC4E00)),
-    KboTeam(188253, "NC 다이노스",  Color(0xFF315288)),
-    KboTeam(188246, "롯데 자이언츠", Color(0xFF041E42)),
-    KboTeam(188244, "SSG 랜더스",   Color(0xFFCE0E2D)),
-    KboTeam(188258, "키움 히어로즈", Color(0xFF570514)),
+    KboTeam(188409, "KT 위즈",     "KT",  Color(0xFF6B7280)), // 검정은 다크 배경에서 안 보여 회색 대체
+    KboTeam(188245, "삼성 라이온즈", "삼성", Color(0xFF074CA1)),
+    KboTeam(188257, "LG 트윈스",    "LG",  Color(0xFFC30452)),
+    KboTeam(188248, "두산 베어스",  "두산", Color(0xFF232A63)),
+    KboTeam(188247, "KIA 타이거즈", "KIA", Color(0xFFEA0029)),
+    KboTeam(188243, "한화 이글스",  "한화", Color(0xFFFC4E00)),
+    KboTeam(188253, "NC 다이노스",  "NC",  Color(0xFF315288)),
+    KboTeam(188246, "롯데 자이언츠", "롯데", Color(0xFF24406E)),
+    KboTeam(188244, "SSG 랜더스",   "SSG", Color(0xFFCE0E2D)),
+    KboTeam(188258, "키움 히어로즈", "키움", Color(0xFF570514)),
 ).associateBy { it.id }
 
 fun teamNameKo(id: Long, fallback: String): String = KBO_TEAMS[id]?.nameKo ?: fallback
+fun teamColor(id: Long): Color = KBO_TEAMS[id]?.color ?: Color(0xFF6B7280)
 ```
 
-<div class="callout tip"><span class="t">팀 컬러는 예시</span>
-위 색은 구단 상징색 예시입니다. 원하는 값으로 조정하세요. 핵심은 API의 <code>teamColors</code>(전부 동일)를 쓰지 않고 자체 정의한다는 점입니다.
-</div>
+## 9. 테마 Composable
 
-## 7. 빌드 확인
+`app/src/main/java/com/diamondscore/core/designsystem/Theme.kt`:
+
+```kotlin
+package com.diamondscore.core.designsystem
+
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+
+@Composable
+fun DiamondScoreTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = DsDarkColors,
+        typography = DsTypography,
+        content = content,
+    )
+}
+```
+
+`MainActivity`의 `setContent { }`를 `DiamondScoreTheme { … }`로 감쌉니다.
+
+## 10. 빌드 확인
 
 ```bash
 ./gradlew :app:assembleDebug
 ```
 
-<div class="checkpoint"><span class="t"></span> <code>BUILD SUCCESSFUL</code>이 뜨고, ▶로 실행했을 때 빈 화면이 기기에 뜨면 부트스트랩 완료.</div>
+<div class="checkpoint"><span class="t"></span> <code>BUILD SUCCESSFUL</code>이 뜨고, ▶로 실행 시 배경이 <code>#0E1116</code> 다크로 칠해지면 디자인 시스템까지 완료. (컴포넌트는 Step 5에서 만듭니다)</div>
 
 <div class="pager">
 <a href="#/labs/step-1">← Step 1</a>

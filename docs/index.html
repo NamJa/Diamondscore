@@ -38,8 +38,8 @@
             var summary = document.getElementById('lab-progress');
             if (summary) {
               var done = load();
-              var total = 9, cleared = 0;
-              for (var i = 0; i <= 8; i++) if (done['/labs/step-' + i]) cleared++;
+              var total = 10, cleared = 0;
+              for (var i = 0; i <= 9; i++) if (done['/labs/step-' + i]) cleared++;
               var pct = Math.round((cleared / total) * 100);
               summary.innerHTML =
                 '<div class="pbar"><span style="width:' + pct + '%"></span></div>' +

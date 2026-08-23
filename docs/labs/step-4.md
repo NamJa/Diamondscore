@@ -179,5 +179,5 @@ class PrefetchWorker @AssistedInject constructor(
 
 <div class="pager">
 <a href="#/labs/step-3">← Step 3</a>
-<a href="#/labs/step-5">Step 5 · 경기 목록 →</a>
+<a href="#/labs/step-5">Step 5 · 공통 컴포넌트 →</a>
 </div>

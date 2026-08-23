@@ -1,104 +1,141 @@
-# Step 6 · 경기 상세 (라인스코어)
+# Step 6 · 경기 목록 화면
 
-<div class="chips"><span class="chip time">90분</span><span class="chip diff">보통</span><span class="chip goal">이닝별 라인스코어(연장 포함)와 종료 확정을 구현한다</span></div>
+<div class="chips"><span class="chip time">90분</span><span class="chip diff">보통</span><span class="chip goal">Step 5 컴포넌트를 조립해 날짜별 목록 + 라이브 갱신을 완성한다</span></div>
 
-경기 상세의 핵심은 **동적 라인스코어 테이블**입니다. 9회 + 연장까지 이닝 수가 경기마다 다르므로 데이터에 있는 만큼만 열을 그립니다. **없는 데이터(볼카운트·주자·라인업)의 자리는 만들지 않습니다.**
+첫 화면입니다. Step 5에서 만든 `GameCard`·`DsBottomBar`·상태 컴포넌트를 조립하고, 날짜 네비게이션과
+**요청 1개짜리 라이브 폴링**을 붙입니다. 목업의 홈 화면을 그대로 만듭니다.
 
-## 1. 상세 ViewModel
+## 1. UiState와 ViewModel
 
-`feature/gamedetail/GameDetailViewModel.kt`:
+`feature/games/GamesViewModel.kt`:
 
 ```kotlin
+data class GamesUiState(
+    val date: LocalDate = LocalDate.now(SEOUL),
+    val games: List<GameSummary> = emptyList(),
+    val loading: Boolean = true,
+    val freshness: Freshness = Freshness.FRESH,   // FRESH / STALE / OFFLINE
+    val error: Boolean = false,
+)
+
 @HiltViewModel
-class GameDetailViewModel @Inject constructor(
+class GamesViewModel @Inject constructor(
     private val repo: GamesRepository,
     savedState: SavedStateHandle,
 ) : ViewModel() {
-    private val id: Long = checkNotNull(savedState["eventId"])
-    val ui = repo.observeGameDetail(id)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    private val date = MutableStateFlow(
+        savedState.get<String>("date")?.let(LocalDate::parse) ?: LocalDate.now(SEOUL))
 
-    fun refresh() = viewModelScope.launch { runCatching { repo.refreshGame(id) } }
+    val ui: StateFlow<GamesUiState> = date
+        .flatMapLatest { d -> repo.observeByDate(d).map { d to it } }
+        .map { (d, games) -> GamesUiState(date = d, games = games, loading = false) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GamesUiState())
+
+    fun move(days: Long) { date.update { it.plusDays(days) } }
+    fun today() { date.value = LocalDate.now(SEOUL) }
+    fun refreshLive() = viewModelScope.launch { runCatching { repo.refreshLive() } }
 }
 ```
 
-`repo.observeGameDetail(id)`는 `GameEntity` + `innings` 테이블을 합쳐 `GameDetail`을 방출하도록 Repository에 추가합니다(DAO `@Transaction` + `@Relation` 또는 두 Flow `combine`).
+## 2. 날짜 바 (DateBar)
 
-## 2. 라인스코어 테이블
+목업 상단: `‹ 8월 2일 토 ›` + "오늘" 버튼.
 
-`feature/gamedetail/LineScoreTable.kt`. 최소 9열을 보장하고, 연장은 가로 스크롤합니다.
+`feature/games/DateBar.kt`:
 
 ```kotlin
 @Composable
-fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>,
-                   awayTotal: Int?, homeTotal: Int?) {
-    val count = maxOf(9, innings.maxOfOrNull { it.number } ?: 9)
-    Row(Modifier.horizontalScroll(rememberScrollState())) {
-        Column {   // 팀 이름 열 (고정 느낌)
-            HeaderCell(""); TeamCell(away.nameKo); TeamCell(home.nameKo)
+fun DateBar(date: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onToday: () -> Unit) {
+    val isToday = date == LocalDate.now(SEOUL)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            IconButton(onClick = onPrev) { DsIcon(Icons.Outlined.ChevronLeft) }
+            Text(date.format(dateFmt), style = MaterialTheme.typography.titleMedium)  // 8월 2일 토
+            IconButton(onClick = onNext) { DsIcon(Icons.Outlined.ChevronRight) }
         }
-        for (n in 1..count) {
-            val row = innings.firstOrNull { it.number == n }
-            Column {
-                HeaderCell("$n")
-                RunCell(row?.away)       // null = 미진행 → 공백
-                RunCell(row?.home)
+        if (!isToday) TextButton(onClick = onToday) { Text("오늘", color = DsColors.live) }
+    }
+}
+```
+
+`SavedStateHandle`에 선택 날짜를 보존하면 프로세스 재생성 후에도 유지됩니다.
+
+## 3. 화면 조립
+
+`feature/games/GamesScreen.kt` — 컴포넌트를 상태에 따라 배치합니다.
+
+```kotlin
+@Composable
+fun GamesScreen(vm: GamesViewModel = hiltViewModel(), onGame: (Long) -> Unit) {
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        TopBar(title = "경기", subtitle = "KBO 2026")
+        DateBar(ui.date, onPrev = { vm.move(-1) }, onNext = { vm.move(1) }, onToday = vm::today)
+        if (ui.freshness == Freshness.OFFLINE) StaleBanner("마지막 갱신 10분 전")
+
+        when {
+            ui.loading            -> LoadingCards()
+            ui.error              -> ErrorState(onRetry = vm::refreshLive)
+            ui.games.isEmpty()    -> EmptyDay(onNearest = { /* 가장 가까운 경기일 */ })
+            else -> LazyColumn(
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                sectioned(ui.games).forEach { (title, items) ->
+                    item { SectionLabel(title) }                       // 진행 중 / 예정 / 종료
+                    items(items, key = { it.id }) { GameCard(it) { onGame(it.id) } }
+                }
             }
-        }
-        Column {   // 합계 R
-            HeaderCell("R"); TotalCell(awayTotal); TotalCell(homeTotal)
         }
     }
 }
-
-@Composable private fun RunCell(run: Int?) =
-    Box(Modifier.size(34.dp), Alignment.Center) { Text(run?.toString() ?: "") } // 미진행은 빈칸
 ```
 
-<div class="callout danger"><span class="t">여기서 가장 많이 틀린다</span>
-<code>innings.maxOfOrNull { it.number }</code>로 <strong>실제 최대 이닝</strong>을 계산하세요. 9로 고정하면 연장 경기의 결승점이 사라집니다(Step 3 함정 2). <code>period*</code> 필드는 절대 쓰지 않습니다.
+`sectioned()`는 `status`로 진행 중 → 예정 → 종료 순으로 묶는 순수 함수입니다. `key = { it.id }`로
+안정적인 key를 주는 것을 잊지 마세요(recomposition 최소화).
+
+<div class="callout tip"><span class="t">Scaffold + BottomBar</span>
+탭 전환은 최상위 <code>Scaffold(bottomBar = { DsBottomBar(...) })</code>에서 처리하고, <code>GamesScreen</code>은 그 안에 놓습니다. Navigation은 Step 9에서 4탭을 연결합니다.
 </div>
 
-## 3. 상세 화면 조립
+## 4. 라이브 폴링 — 화면이 보일 때만
+
+`GET /sport/baseball/events/live` 한 번이 진행 중인 KBO 전 경기를 줍니다. **`STARTED`** 에서만 20초 간격.
 
 ```kotlin
 @Composable
-fun GameDetailScreen(vm: GameDetailViewModel = hiltViewModel(), onBack: () -> Unit) {
-    val d by vm.ui.collectAsStateWithLifecycle()
-    d?.let { detail ->
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
-            ScoreHeader(detail)                     // 원정/홈 총점 + 상태 라벨(원문)
-            Spacer(Modifier.height(16.dp))
-            LineScoreTable(detail.summary.away, detail.summary.home, detail.innings,
-                detail.summary.awayRuns, detail.summary.homeRuns)
-            Spacer(Modifier.height(16.dp))
-            InfoSection(venue = detail.venue, homeManager = detail.homeManager,
-                awayManager = detail.awayManager, season = detail.seasonName)
-            // ⚠️ 볼카운트·주자·라인업·문자중계 탭은 만들지 않는다 (KBO 미제공)
+fun LivePolling(vm: GamesViewModel, hasLive: Boolean) {
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(hasLive) {
+        if (!hasLive) return@LaunchedEffect
+        owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                vm.refreshLive()
+                delay(20_000L + Random.nextLong(-2000, 2000))   // jitter ±2s
+            }
         }
-    } ?: LoadingContent()
+    }
 }
 ```
 
-## 4. 종료 확정 처리
+화면에서 `LivePolling(vm, ui.games.any { it.status == GameStatus.LIVE })`.
 
-`inprogress → finished` 전환 시, 마지막 이닝 득점이 반영되기 전에 상태만 먼저 바뀔 수 있습니다. 전환 직후 **한 번 더** 조회합니다.
+<div class="callout warn"><span class="t">홈으로 나가면 멈춰야 한다</span>
+<code>repeatOnLifecycle(STARTED)</code>가 백그라운드 진입 시 코루틴을 취소합니다. 안 쓰면 배터리·트래픽이 새고 차단 위험이 커집니다(§7).
+</div>
 
-```kotlin
-LaunchedEffect(d?.summary?.status) {
-    if (d?.summary?.status == GameStatus.FINAL) vm.refresh()   // 확정 조회 1회
-}
-```
+## 5. 즐겨찾는 구단 상단 고정
 
-라이브 중에는 목록과 같은 스케줄러를 공유하되, 화면이 보일 때만 15초 간격으로 상세를 갱신합니다(라이브 응답에 이닝이 포함되면 이 폴링을 없앨 수 있음 — Step 1 `DS-002` 결과에 따름).
+Step 8에서 만들 즐겨찾기와 연결됩니다. Repository의 `observeByDate`를 즐겨찾기 Set과 `combine`해
+정렬 키를 얹으면, 목업처럼 즐겨찾는 구단 경기가 위로 올라옵니다.
 
-## 5. 실행 확인
+## 6. 실행 확인
 
-경기 카드를 눌러 상세로 들어갑니다.
-
-<div class="checkpoint"><span class="t"></span> 9이닝 경기는 1~9열, 연장 경기는 10·11열이 <strong>추가로</strong> 보이고 미진행 이닝은 빈칸이면 성공. 취소/미진행 경기는 라인스코어 대신 상태 라벨이 원문으로 보이면 됩니다.</div>
+<div class="checkpoint"><span class="t"></span> 목업의 홈 화면(진행 중·예정·종료·연기 섹션, 원정 먼저, 라이브 빨강)이 그대로 뜨고, 날짜 화살표로 과거/미래가 즉시(네트워크 없이) 바뀌면 성공. 경기일이면 30분 켜두고 자동 갱신 + 홈 복귀 시 폴링 정지/재개를 확인하세요.</div>
 
 <div class="pager">
 <a href="#/labs/step-5">← Step 5</a>
-<a href="#/labs/step-7">Step 7 · 순위·팀·즐겨찾기 →</a>
+<a href="#/labs/step-7">Step 7 · 경기 상세 →</a>
 </div>

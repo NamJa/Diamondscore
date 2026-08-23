@@ -1,109 +1,117 @@
-# Step 8 · 마감 — 접근성·적응형·성능·릴리스
+# Step 8 · 순위 · 팀 · 즐겨찾기
 
-<div class="chips"><span class="chip time">90분</span><span class="chip diff">보통</span><span class="chip goal">출시 품질로 다듬고 R8 릴리스 빌드를 검증한다</span></div>
+<div class="chips"><span class="chip time">90분</span><span class="chip diff">보통</span><span class="chip goal">순위표·팀 상세·즐겨찾기 화면을 컴포넌트로 조립한다</span></div>
 
-기능은 끝났습니다. 이제 접근성·태블릿 대응·성능을 다듬고, 난독화된 릴리스 빌드가 실제로 도는지 확인합니다.
+정보 탐색 화면을 채웁니다. Step 5의 `StandingRow`·`GameCard`를 재사용하고, 목업의 팀 컬러 헤더를 만듭니다.
 
-## 1. 설정 화면
+## 1. 순위 화면
 
-`feature/settings/SettingsScreen.kt` — 테마(시스템/라이트/다크), 라이브 폴링 간격, **데이터 출처 표기**.
+`feature/standings/StandingsScreen.kt` — `StandingRow` + `PlayoffDivider`(5위 뒤) 조립.
 
 ```kotlin
 @Composable
-fun SettingsScreen() {
-    Column(Modifier.padding(16.dp)) {
-        ThemePicker()                 // DataStore에 저장
-        PollingIntervalPicker()
-        ListItem(
-            headlineContent = { Text("데이터 출처") },
-            supportingContent = { Text("SofaScore · 개인 용도") },
-        )
-        ListItem(headlineContent = { Text("오픈소스 라이선스") }, modifier = Modifier.clickable { /* OSS */ })
+fun StandingsScreen(vm: StandingsViewModel = hiltViewModel(), onTeam: (Long) -> Unit) {
+    val rows by vm.ui.collectAsStateWithLifecycle()
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        TopBar("순위", trailing = { SeasonChip("2026 정규시즌") })
+        StandingsHeader()   // # 팀 경기 승·패·무 승률 GB
+        LazyColumn {
+            itemsIndexed(rows, key = { _, s -> s.team.id }) { i, s ->
+                StandingRow(s) { onTeam(s.team.id) }
+                if (i == 4) item { PlayoffDivider() }   // 5위 다음 진출선
+            }
+        }
     }
 }
 ```
 
-<div class="callout warn"><span class="t">출처 표기는 필수</span>
-데이터 출처(SofaScore)와 개인 용도임을 앱에 명시하세요. 로고·선수 이미지를 재배포하지 않습니다.
+<div class="callout tip"><span class="t">공급 안 되는 컬럼은 숨긴다</span>
+값이 없는 컬럼은 <code>-</code> 대신 컬럼 자체를 그리지 않습니다. 동률 순서는 앱에서 재계산하지 않고 <code>position</code>을 그대로 씁니다. 무승부는 <code>games - wins - losses</code> 파생(Step 3 함정 1).
 </div>
 
-## 2. 접근성
+`itemsIndexed`로 5위 다음에 `PlayoffDivider`를 끼우는 방식은 간단하지만, 목록이 길면 `LazyColumn`
+DSL에서 `item {}`을 조건 분기로 넣는 편이 더 명확합니다.
 
-각 화면에서 확인합니다.
+## 2. 팀 상세 — 컬러 헤더
 
-- **TalkBack 순서**: 스코어 헤더 → 라인스코어 → 정보 순으로 읽히는지. `Modifier.semantics { }` 로 라인스코어에 `contentDescription = "1회 초 원정 1점"` 형태 요약 제공.
-- **터치 영역 48dp**: 날짜 화살표·즐겨찾기 버튼 등.
-- **글꼴 200%**: 설정 → 디스플레이 → 글꼴 최대. 라인스코어가 가로 스크롤로 살아남는지.
-- 장식 이미지는 `contentDescription = null`.
+목업: 구단 컬러 그라디언트 배너 + 원형 배지 + 순위/전적, 아래 정보·최근·예정 경기.
 
-```bash
-# Accessibility Scanner 앱으로 각 화면 스캔, 또는:
-./gradlew :app:connectedDebugAndroidTest   # semantics 기반 UI 테스트
-```
-
-## 3. 적응형 레이아웃
-
-`NavigableListDetailPaneScaffold`로 태블릿/폴더블에서 목록-상세를 나란히 놓습니다.
+`feature/teams/TeamHeader.kt`:
 
 ```kotlin
 @Composable
-fun GamesListDetailPane() {
-    val nav = rememberListDetailPaneScaffoldNavigator<Long>()
-    NavigableListDetailPaneScaffold(
-        navigator = nav,
-        listPane = { GamesScreen(onGame = { nav.navigateTo(ListDetailPaneScaffoldRole.Detail, it) }) },
-        detailPane = { nav.currentDestination?.contentKey?.let { GameDetailScreen(eventId = it) } },
-    )
+fun TeamHeader(team: TeamRef, record: String, isFav: Boolean, onFav: () -> Unit, onBack: () -> Unit) {
+    val c = teamColor(team.id)
+    Box(Modifier.fillMaxWidth()
+        .background(Brush.linearGradient(listOf(c, c.copy(alpha = .55f))))
+        .padding(bottom = 18.dp)) {
+        Column {
+            Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft, tint = Color.White) }
+                IconButton(onClick = onFav) {
+                    DsIcon(if (isFav) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        tint = if (isFav) DsColors.gold else Color.White)
+                }
+            }
+            Row(Modifier.padding(start = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(56.dp).clip(CircleShape)
+                    .background(Color.White.copy(alpha = .15f))
+                    .border(2.dp, Color.White.copy(alpha = .5f), CircleShape), Alignment.Center) {
+                    Text(team.short, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Column {
+                    Text(team.nameKo, color = Color.White, style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold)
+                    Text(record, color = Color.White.copy(alpha = .85f), style = ScoreNumber)  // 리그 5위 · 50·44·2
+                }
+            }
+        }
+    }
 }
 ```
 
-<div class="checkpoint"><span class="t"></span> compact(휴대폰)은 단일 화면 + 하단 네비, expanded(태블릿)는 목록·상세가 나란히 뜨면 성공.</div>
+팀 로고는 Coil 3로 불러오고 실패 시 위 배지로 대체합니다.
 
-## 4. 성능
-
-```bash
-# Baseline Profile 생성 (Macrobenchmark 모듈)
-./gradlew :app:generateBaselineProfile
+```kotlin
+AsyncImage(
+    model = "https://img.sofascore.com/api/v1/team/${team.id}/image",
+    contentDescription = team.nameKo,
+    error = rememberVectorPainter(Icons.Outlined.Shield),
+    modifier = Modifier.size(56.dp).clip(CircleShape),
+)
 ```
 
-- UI state는 `@Immutable` data class, 리스트는 `ImmutableList`로 만들어 strong-skipping이 깨지지 않게.
-- `items(..., key = ...)` 안정 key 유지(Step 5).
-- 경기일 30분 라이브를 켜두고 배터리·메모리를 관찰(Android Studio Profiler). 누수·과도한 recomposition이 없는지.
+`TeamDetailScreen`은 헤더 아래로 정보 카드(홈구장·수용인원·감독) → "최근 경기" → "다음 경기"를
+`GameCard`(또는 목업의 미니 행)로 나열합니다.
 
-## 5. R8 릴리스 빌드 검증
+## 3. 즐겨찾기
 
-```bash
-./gradlew :app:assembleRelease
+`data/repository/FavoritesRepository.kt`:
+
+```kotlin
+class FavoritesRepository @Inject constructor(private val dao: FavoriteDao) {
+    fun observeTeams(): Flow<Set<Long>> =
+        dao.observe("team").map { it.mapTo(mutableSetOf()) { f -> f.targetId } }
+    suspend fun toggle(teamId: Long) {
+        if (dao.exists("team", teamId)) dao.delete("team", teamId)
+        else dao.insert(FavoriteEntity("team", teamId, System.currentTimeMillis()))
+    }
+}
 ```
 
-<div class="callout danger"><span class="t">직렬화 클래스 생존 확인</span>
-R8이 kotlinx.serialization DTO를 지우면 릴리스에서만 파싱 크래시가 납니다. 릴리스 APK를 <strong>실제로 실행</strong>해 경기 목록이 뜨는지 확인하세요. 문제가 있으면 <code>@Serializable</code> 클래스 keep 규칙을 <code>proguard-rules.pro</code>에 추가합니다.
+`FavoritesScreen`은 목업대로 "내 구단"(다음 경기/라이브 요약 + 채운 별)과 "즐겨찾는 경기"를 보여줍니다.
+빈 상태면 Step 5의 빈-상태 패턴으로 "구단을 즐겨찾기 해보세요"를 안내합니다.
+
+<div class="callout tip"><span class="t">로컬 저장</span>
+로그인 없이 Room에만 저장합니다. 즐겨찾은 구단은 경기 목록 상단 고정(§Step 6-5)과 연결됩니다.
 </div>
 
-```
-# proguard-rules.pro (필요 시)
--keep,includedescriptorclasses class com.diamondscore.data.remote.dto.** { *; }
--keepclassmembers class com.diamondscore.data.remote.dto.** { *; }
-```
+## 4. 실행 확인
 
-## 6. 최종 점검 (Definition of Done)
-
-<div class="checkpoint"><span class="t"></span> 아래가 모두 예면 앱 완성입니다.</div>
-
-- [ ] 오늘·선택 날짜의 모든 경기가 보인다
-- [ ] 라이브 점수·이닝이 화면 표시 중 자동 갱신된다
-- [ ] 경기→팀, 순위→팀 이동과 back 문맥 복원
-- [ ] 오프라인에서 마지막 데이터 + 갱신 시각 표시
-- [ ] 결측·일부 필드 부재에도 크래시 없음
-- [ ] 범위 밖(볼카운트·선수 기록)의 UI 자리를 만들지 않았다
-- [ ] compact/expanded, 라이트/다크, 200% 글꼴에서 검증
-- [ ] R8 릴리스 빌드가 실제로 동작
-
-<div class="callout ok"><span class="t">완성 🎉</span>
-축하합니다 — SofaScore 데이터로 도는 KBO 실시간 앱을 처음부터 만들었습니다. 더 확장하려면 P1(문자중계·라인업·선수 기록)에 보조 소스를 붙이거나, 공개 배포를 위해 <a href="#/IMPLEMENTATION_PLAN_KO">전체 계획서</a> §13(BFF 전환)을 참고하세요.
-</div>
+<div class="checkpoint"><span class="t"></span> 순위(진출선 포함) → 팀 선택 → 컬러 헤더의 팀 상세 → 최근 경기 → 경기 상세로 이어지고, 별을 누르면 즐겨찾기에 추가되어 목록 상단에 고정되면 성공. 목업의 순위·팀 상세·즐겨찾기와 대조하세요.</div>
 
 <div class="pager">
 <a href="#/labs/step-7">← Step 7</a>
-<a href="#/">홈으로 ↑</a>
+<a href="#/labs/step-9">Step 9 · 마감·릴리스 →</a>
 </div>

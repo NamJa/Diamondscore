@@ -1,109 +1,123 @@
-# Step 7 · 순위 · 팀 · 즐겨찾기
+# Step 7 · 경기 상세
 
-<div class="chips"><span class="chip time">90분</span><span class="chip diff">보통</span><span class="chip goal">순위표·팀 상세·팀 즐겨찾기를 완성한다</span></div>
+<div class="chips"><span class="chip time">80분</span><span class="chip diff">보통</span><span class="chip goal">스코어보드 + 라인스코어(연장) + 정보로 상세 화면을 조립한다</span></div>
 
-정보 탐색 화면을 채웁니다. 순위표는 **승-패-무**(무는 파생)를 보여주고, 팀 상세는 최근/예정 경기를, 즐겨찾기는 로컬에 저장합니다.
+Step 5의 `LineScoreTable`을 화면에 올리고, 목업의 스코어보드·경기 정보를 붙입니다. **없는 데이터
+(볼카운트·주자·라인업)의 자리는 만들지 않습니다.**
 
-## 1. 순위 Repository·ViewModel
+## 1. 상세 ViewModel
 
-`data/repository/StandingsRepository.kt`:
+`feature/gamedetail/GameDetailViewModel.kt`:
 
 ```kotlin
-class StandingsRepository @Inject constructor(
-    private val api: SofaScoreApi, private val dao: StandingDao,
-) {
-    fun observe(seasonId: Long): Flow<List<Standing>> =
-        dao.observe(seasonId).map { it.map(StandingEntity::toDomain) }
-
-    suspend fun refresh(seasonId: Long) {
-        val rows = api.standings(seasonId).standings.firstOrNull()?.rows.orEmpty()
-        dao.replace(seasonId, rows.map { it.toDomain().toEntity(seasonId) })   // TTL 10분 캐시
-    }
+@HiltViewModel
+class GameDetailViewModel @Inject constructor(
+    private val repo: GamesRepository,
+    savedState: SavedStateHandle,
+) : ViewModel() {
+    private val id: Long = checkNotNull(savedState["eventId"])
+    val ui = repo.observeGameDetail(id)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    fun refresh() = viewModelScope.launch { runCatching { repo.refreshGame(id) } }
 }
 ```
 
-## 2. 순위 화면
+`observeGameDetail(id)`는 `GameEntity` + `innings` 테이블을 합쳐 `GameDetail`(요약·라인스코어·구장·감독)을
+방출합니다(DAO `@Transaction` 또는 두 Flow `combine`).
 
-`feature/standings/StandingsScreen.kt`:
+## 2. 스코어보드 (ScoreHeader)
 
-```kotlin
-@Composable
-fun StandingsScreen(vm: StandingsViewModel = hiltViewModel(), onTeam: (Long) -> Unit) {
-    val rows by vm.ui.collectAsStateWithLifecycle()
-    LazyColumn {
-        stickyHeader { StandingHeader() }        // 순위 팀 경기 승 패 무 승률 GB 득실
-        items(rows, key = { it.team.id }) { s -> StandingRow(s) { onTeam(s.team.id) } }
-    }
-}
+목업: 상태 라벨 → 원정팀(먼저) → 홈팀, 팀 컬러 원형 배지 + 등폭 대형 점수, 승팀 강조.
 
-@Composable private fun StandingRow(s: Standing, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(8.dp)) {
-        Cell("${s.position}", .8f); Cell(s.team.nameKo, 3f)
-        Cell("${s.games}", 1f); Cell("${s.wins}", 1f); Cell("${s.losses}", 1f)
-        Cell("${s.draws}", 1f)                                     // ← 파생 무승부
-        Cell("%.3f".format(s.winPct), 1.4f)
-        Cell(if (s.gamesBehind == 0.0) "-" else "%.1f".format(s.gamesBehind), 1.2f)
-        Cell(s.runDiff, 1.2f)
-        s.playoffTier?.let { PlayoffBadge(it) }                    // promotion.text
-    }
-}
-```
-
-<div class="callout tip"><span class="t">공급 안 되는 컬럼은 숨긴다</span>
-값이 없는 컬럼은 <code>-</code> 대신 컬럼 자체를 그리지 마세요. 동률 순서는 앱에서 재계산하지 않고 <code>position</code> 순서를 그대로 씁니다.
-</div>
-
-## 3. 팀 상세
-
-`feature/teams/TeamDetailScreen.kt` — 팀 정보 + 최근/예정 경기(`/team/{id}/events/last|next/{page}`).
+`feature/gamedetail/ScoreHeader.kt`:
 
 ```kotlin
 @Composable
-fun TeamDetailScreen(vm: TeamDetailViewModel = hiltViewModel(), onGame: (Long) -> Unit) {
-    val ui by vm.ui.collectAsStateWithLifecycle()
-    LazyColumn {
-        item { TeamHeader(ui.team, isFavorite = ui.isFavorite, onFav = vm::toggleFavorite) }
-        item { SectionTitle("최근 경기") }
-        items(ui.recent, key = { it.id }) { GameCard(it) { onGame(it.id) } }
-        item { SectionTitle("다음 경기") }
-        items(ui.upcoming, key = { it.id }) { GameCard(it) { onGame(it.id) } }
+fun ScoreHeader(d: GameDetail) {
+    Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)) {
+        Column(Modifier.padding(16.dp)) {
+            Text(statusHeadline(d.summary), color = statusColor(d.summary),
+                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(14.dp))
+            TeamScoreRow(d.summary.away, d.summary.awayRuns, "원정",
+                win = d.summary.winner == Winner.AWAY)
+            Spacer(Modifier.height(12.dp))
+            TeamScoreRow(d.summary.home, d.summary.homeRuns, "홈",
+                win = d.summary.winner == Winner.HOME)
+        }
+    }
+}
+
+@Composable
+private fun TeamScoreRow(t: TeamRef, runs: Int?, side: String, win: Boolean) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(teamColor(t.id)), Alignment.Center) {
+                Text(t.short, color = Color.White, style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold)
+            }
+            Column {
+                Text(t.nameKo, style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (win) FontWeight.Bold else FontWeight.Normal,
+                    color = if (win) MaterialTheme.colorScheme.onSurface else DsColors.muted2.takeIf { !win } ?: MaterialTheme.colorScheme.onSurface)
+                Text(if (win) "$side · 승" else side, style = MaterialTheme.typography.labelSmall, color = DsColors.muted2)
+            }
+        }
+        Text(runs?.toString() ?: "-", style = ScoreNumber.copy(fontSize = 34.sp),
+            color = if (win) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
     }
 }
 ```
 
-팀 로고는 Coil 3로 불러오되, 실패 시 팀 컬러 모노그램으로 대체합니다.
+## 3. 화면 조립
 
 ```kotlin
-AsyncImage(
-    model = "https://img.sofascore.com/api/v1/team/${team.id}/image",
-    contentDescription = team.nameKo,
-    error = painterResource(R.drawable.ic_team_placeholder),
-    modifier = Modifier.size(48.dp),
-)
-```
-
-## 4. 즐겨찾기 (로컬)
-
-`data/repository/FavoritesRepository.kt`:
-
-```kotlin
-class FavoritesRepository @Inject constructor(private val dao: FavoriteDao) {
-    fun observeTeams(): Flow<Set<Long>> =
-        dao.observe("team").map { it.map { f -> f.targetId }.toSet() }
-    suspend fun toggle(teamId: Long) {
-        if (dao.exists("team", teamId)) dao.delete("team", teamId)
-        else dao.insert(FavoriteEntity("team", teamId, System.currentTimeMillis()))
+@Composable
+fun GameDetailScreen(vm: GameDetailViewModel = hiltViewModel(), onBack: () -> Unit) {
+    val d by vm.ui.collectAsStateWithLifecycle()
+    Scaffold(topBar = { DetailTopBar(onBack, favorite = false) }) { pad ->
+        d?.let { detail ->
+            Column(Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ScoreHeader(detail)
+                LabeledBlock("이닝별 득점") {
+                    LineScoreTable(detail.summary.away, detail.summary.home, detail.innings,
+                        detail.summary.awayRuns, detail.summary.homeRuns)
+                }
+                LabeledBlock("경기 정보") { InfoTable(detail) }   // 경기장·수용인원·감독·시즌
+                DataNote()  // "KBO는 이닝별 득점까지 제공… 볼카운트·라인업은 없음"
+                // ⚠️ 볼카운트·주자·라인업·문자중계 탭은 만들지 않는다
+            }
+        } ?: LoadingCards(count = 2)
     }
 }
 ```
 
-경기 목록에서 즐겨찾는 팀의 경기를 **상단 고정**하려면, `observeByDate` 결과를 즐겨찾기 Set과 `combine`해 정렬 키를 얹습니다.
+`InfoTable`은 목업의 정보 카드 그대로 — 경기장, 수용 인원(`23,000석`), 감독(데이터 없으면 `[감독명]`),
+`KBO League 2026 · 1R`.
+
+## 4. 종료 확정 처리
+
+`inprogress → finished` 전환 시, 마지막 이닝 득점이 반영되기 전에 상태만 먼저 바뀔 수 있습니다.
+전환 직후 한 번 더 조회합니다.
+
+```kotlin
+LaunchedEffect(d?.summary?.status) {
+    if (d?.summary?.status == GameStatus.FINAL) vm.refresh()
+}
+```
+
+라이브 중에는 화면이 보일 때만 15초 간격으로 상세를 갱신합니다(§7.1 — `events/live`에 이닝이 포함되면
+이 폴링을 없앨 수 있음, `DS-002` 결과에 따름).
 
 ## 5. 실행 확인
 
-<div class="checkpoint"><span class="t"></span> 순위 → 팀 선택 → 팀 상세의 최근 경기 → 경기 상세로 이동하고, 뒤로가기로 각 화면의 스크롤·선택이 복원되면 성공. 즐겨찾기 별을 누르면 목록 상단에 고정됩니다.</div>
+<div class="checkpoint"><span class="t"></span> 9이닝 경기는 1~9열, 연장 경기는 10·11열이 <strong>추가로</strong> 뜨고 미진행 이닝은 빈칸이면 성공(목업과 동일). 취소/미진행은 라인스코어 대신 상태 라벨이 원문으로 보입니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-6">← Step 6</a>
-<a href="#/labs/step-8">Step 8 · 마감·릴리스 →</a>
+<a href="#/labs/step-8">Step 8 · 순위·팀·즐겨찾기 →</a>
 </div>
