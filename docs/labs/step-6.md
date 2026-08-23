@@ -95,8 +95,20 @@ fun GamesScreen(vm: GamesViewModel = hiltViewModel(), onGame: (Long) -> Unit) {
 }
 ```
 
-`sectioned()`는 `status`로 진행 중 → 예정 → 종료 순으로 묶는 순수 함수입니다. `key = { it.id }`로
-안정적인 key를 주는 것을 잊지 마세요(recomposition 최소화).
+`sectioned()`는 `status`로 진행 중 → 예정 → 종료 순으로 묶는 순수 함수입니다.
+
+```kotlin
+fun sectioned(games: List<GameSummary>): List<Pair<String, List<GameSummary>>> = buildList {
+    fun bucket(title: String, pred: (GameSummary) -> Boolean) =
+        games.filter(pred).takeIf { it.isNotEmpty() }?.let { add(title to it) }
+    bucket("진행 중") { it.status == GameStatus.LIVE }
+    bucket("예정")   { it.status == GameStatus.SCHEDULED }
+    bucket("종료")   { it.status == GameStatus.FINAL }
+    bucket("취소·연기") { it.status in setOf(GameStatus.CANCELED, GameStatus.POSTPONED, GameStatus.SUSPENDED) }
+}
+```
+
+`key = { it.id }`로 안정적인 key를 주는 것을 잊지 마세요(recomposition 최소화).
 
 <div class="callout tip"><span class="t">Scaffold + BottomBar</span>
 탭 전환은 최상위 <code>Scaffold(bottomBar = { DsBottomBar(...) })</code>에서 처리하고, <code>GamesScreen</code>은 그 안에 놓습니다. Navigation은 Step 9에서 4탭을 연결합니다.

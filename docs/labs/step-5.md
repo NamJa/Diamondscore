@@ -14,10 +14,8 @@
 `teamShort`·`ScoreNumber`와 Step 3의 도메인 모델(`GameSummary`·`GameStatus`·`InningRuns`·`Standing`)을 씁니다.
 
 <div class="callout tip"><span class="t">코드에 나오는 작은 헬퍼들</span>
-아래 코드의 <code>DsIcon</code>(Icon 래퍼), <code>CenterColumn</code>(가운데 정렬 Column), <code>HeaderCell</code>·
-<code>TeamCell</code>·<code>TotalCell</code>(라인스코어 셀), <code>DsTabIcon</code>은 한 줄짜리 보조 Composable입니다.
-처음 나올 때 같은 파일에 간단히 정의하세요(예: <code>@Composable fun DsIcon(v: ImageVector, tint: Color = LocalContentColor.current, size: Dp = 24.dp) = Icon(v, null, Modifier.size(size), tint)</code>).
-Preview의 <code>sampleLive</code> 등은 <code>GameSummary(...)</code>를 손으로 채운 <strong>샘플 데이터</strong>입니다 — 목업 값(LG 2 : KIA 3 등)으로 만들어 두면 4상태를 한눈에 볼 수 있습니다.
+<code>DsIcon</code>·<code>DsTabIcon</code>·<code>CenterColumn</code>·<code>TopBar</code>·<code>HeaderCell</code>·<code>TeamCell</code>·
+<code>TotalCell</code> 등 공용 조각의 <strong>완전한 코드는 §6</strong>에, Preview용 <code>sampleLive</code> 등 <strong>샘플 데이터는 §7</strong>에 있습니다. 먼저 §6·§7을 만들어 두고 위 컴포넌트를 작성하면 매끄럽습니다.
 </div>
 
 ## 1. 하단 네비게이션 (DsBottomBar)
@@ -145,7 +143,7 @@ fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>, away
         border = BorderStroke(1.dp, Color(0xFF232A34))) {
         Row(Modifier.horizontalScroll(rememberScrollState())) {    // 연장 시 가로 스크롤
             Column {
-                HeaderCell(""); TeamCell(teamShort(away.id)); TeamCell(teamShort(home.id))
+                HeaderCell("", width = 64.dp); TeamCell(teamShort(away.id)); TeamCell(teamShort(home.id))
             }
             for (n in 1..count) {
                 val r = innings.firstOrNull { it.number == n }
@@ -164,13 +162,34 @@ fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>, away
 }
 
 @Composable private fun RunCell(run: Int?, live: Boolean = false) =
-    Box(Modifier.widthIn(min = 30.dp).height(38.dp).padding(horizontal = 4.dp), Alignment.Center) {
+    Box(Modifier.width(34.dp).height(38.dp), Alignment.Center) {
         Text(run?.toString() ?: "", style = ScoreNumber.copy(fontSize = 13.sp),   // 미진행 = 빈칸
             color = if (live && run != null) DsColors.live else MaterialTheme.colorScheme.onSurface)
     }
-```
 
-(`HeaderCell`/`TeamCell`/`TotalCell`은 같은 크기 규칙의 작은 헬퍼입니다.)
+// 라인스코어 셀 — 팀 열 64dp, 이닝/R 열 34dp
+@Composable
+fun HeaderCell(text: String, accent: Boolean = false, strong: Boolean = false, width: Dp = 34.dp) =
+    Box(Modifier.width(width).height(30.dp), Alignment.Center) {
+        Text(text, style = ScoreNumber.copy(fontSize = 12.sp), color = when {
+            strong -> MaterialTheme.colorScheme.onSurface
+            accent -> DsColors.gold
+            else   -> DsColors.muted2
+        })
+    }
+
+@Composable
+fun TeamCell(text: String, width: Dp = 64.dp) =
+    Box(Modifier.width(width).height(38.dp).padding(start = 12.dp), Alignment.CenterStart) {
+        Text(text, style = MaterialTheme.typography.labelMedium)
+    }
+
+@Composable
+fun TotalCell(v: Int?, width: Dp = 34.dp) =
+    Box(Modifier.width(width).height(38.dp), Alignment.Center) {
+        Text(v?.toString() ?: "", style = ScoreNumber.copy(fontSize = 14.sp), fontWeight = FontWeight.Bold)
+    }
+```
 
 <div class="callout danger"><span class="t">period* 를 쓰지 말 것</span>
 열 개수는 <code>innings</code> 맵의 최대 번호로 계산합니다. <code>period1..9</code>만 읽으면 연장 득점이 사라집니다(Step 3 함정 2). Preview에 <strong>10이닝 경기</strong>를 하나 넣어 10열이 나오는지 꼭 확인하세요.
@@ -268,7 +287,107 @@ fun StaleBanner(lastUpdatedText: String) = Row(
 }
 ```
 
-각각 `@Preview`를 붙여 목업의 상태 화면과 대조합니다.
+각각 `@Preview`를 붙여 목업의 상태 화면과 대조합니다. `CenterColumn`은 아래 §6에 있습니다.
+
+## 6. 공용 UI 헬퍼
+
+여러 화면·컴포넌트가 함께 쓰는 작은 조각들. `core/designsystem/DsHelpers.kt`:
+
+```kotlin
+@Composable
+fun DsIcon(icon: ImageVector, tint: Color = LocalContentColor.current, size: Dp = 24.dp) =
+    Icon(icon, contentDescription = null, modifier = Modifier.size(size), tint = tint)
+
+@Composable
+fun DsTabIcon(tab: DsTab) = DsIcon(
+    when (tab) {
+        DsTab.GAMES      -> Icons.Outlined.CalendarMonth
+        DsTab.STANDINGS  -> Icons.Outlined.EmojiEvents
+        DsTab.TEAMS      -> Icons.Outlined.Shield
+        DsTab.FAVORITES  -> Icons.Outlined.StarBorder
+    }
+)
+
+/** 빈/오류 상태의 세로 가운데 정렬 컨테이너. */
+@Composable
+fun CenterColumn(content: @Composable ColumnScope.() -> Unit) = Column(
+    Modifier.fillMaxSize().padding(24.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+    content = content,
+)
+
+/** 화면 상단 타이틀 바 (부제 또는 우측 요소 옵션). */
+@Composable
+fun TopBar(title: String, subtitle: String? = null, trailing: @Composable (() -> Unit)? = null) = Row(
+    Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.SpaceBetween,
+) {
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        subtitle?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = DsColors.muted2) }
+    }
+    trailing?.invoke()
+}
+
+@Composable
+fun SectionLabel(text: String) = Text(
+    text, Modifier.padding(start = 4.dp, top = 6.dp),
+    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = DsColors.muted2,
+)
+
+@Composable
+fun LabeledBlock(title: String, content: @Composable () -> Unit) = Column {
+    Text(title, Modifier.padding(bottom = 8.dp, start = 2.dp),
+        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+    content()
+}
+
+@Composable
+fun Caption(text: String) =
+    Text(text, style = MaterialTheme.typography.labelSmall, color = DsColors.muted2)
+
+/** 순위 화면의 시즌 선택 칩. */
+@Composable
+fun SeasonChip(text: String, onClick: () -> Unit = {}) = Surface(
+    onClick = onClick, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(999.dp),
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+) {
+    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text, style = MaterialTheme.typography.labelMedium)
+        DsIcon(Icons.Outlined.ExpandMore, size = 14.dp, tint = DsColors.muted2)
+    }
+}
+```
+
+<div class="callout tip"><span class="t">아이콘 의존성</span>
+<code>Icons.Outlined.CalendarMonth</code> 등은 <code>androidx.compose.material:material-icons-extended</code>에 있습니다. Step 2 <code>dependencies</code>에 <code>implementation("androidx.compose.material:material-icons-extended")</code>를 추가하세요. 목업의 라인 아이콘을 그대로 쓰려면 <code>ImageVector.Builder</code>로 옮겨도 됩니다.
+</div>
+
+## 7. Preview 샘플 데이터
+
+Preview에서 4상태를 보려면 `GameSummary`를 손으로 채운 샘플이 필요합니다. `debug` 소스셋에 두세요.
+
+```kotlin
+private fun sample(
+    id: Long, status: GameStatus, home: Long, away: Long,
+    hr: Int? = null, ar: Int? = null, label: String = "", winner: Winner? = null,
+    extra: Boolean = false, venue: String? = null,
+) = GameSummary(
+    id = id, startsAt = Instant.now(), leagueDate = LocalDate.now(SEOUL),
+    status = status, statusLabel = label,
+    home = TeamRef(home, teamNameKo(home, ""), ""), away = TeamRef(away, teamNameKo(away, ""), ""),
+    homeRuns = hr, awayRuns = ar, winner = winner, wentExtra = extra,
+    venueShort = venue, changeTimestamp = null,
+)
+
+val sampleLive       = sample(1, GameStatus.LIVE, home = 188247, away = 188257, hr = 3, ar = 2, label = "6회말", venue = "광주")
+val sampleScheduled  = sample(2, GameStatus.SCHEDULED, home = 188246, away = 188245, venue = "사직")
+val sampleFinalExtra = sample(3, GameStatus.FINAL, home = 188244, away = 188248, hr = 2, ar = 1, label = "종료", winner = Winner.HOME, extra = true, venue = "인천")
+val samplePostponed  = sample(4, GameStatus.POSTPONED, home = 188253, away = 188243, label = "우천 연기", venue = "창원")
+```
 
 <div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(10이닝) · 순위 행+진출선 · 상태 4종이 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
 

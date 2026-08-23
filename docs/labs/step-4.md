@@ -58,6 +58,9 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE eventId = :id")
     fun observeGame(id: Long): kotlinx.coroutines.flow.Flow<GameEntity?>
 
+    @Query("SELECT * FROM innings WHERE eventId = :id ORDER BY inning")
+    fun observeInnings(id: Long): kotlinx.coroutines.flow.Flow<List<InningRunEntity>>
+
     @Query("SELECT changeTimestamp FROM games WHERE eventId = :id")
     suspend fun changeTs(id: Long): Long?
 
@@ -68,6 +71,30 @@ interface GameDao {
     suspend fun saveGame(game: GameEntity, innings: List<InningRunEntity>) {
         upsertGames(listOf(game)); upsertInnings(innings)      // 총점·이닝을 한 트랜잭션으로
     }
+}
+```
+
+`data/local/dao/StandingDao.kt` · `FavoriteDao.kt`:
+
+```kotlin
+@Dao
+interface StandingDao {
+    @Query("SELECT * FROM standings WHERE seasonId = :sid ORDER BY position")
+    fun observe(sid: Long): Flow<List<StandingEntity>>
+
+    @Transaction
+    suspend fun replace(sid: Long, rows: List<StandingEntity>) { clear(sid); upsert(rows) }
+    @Query("DELETE FROM standings WHERE seasonId = :sid") suspend fun clear(sid: Long)
+    @Upsert suspend fun upsert(rows: List<StandingEntity>)
+}
+
+@Dao
+interface FavoriteDao {
+    @Query("SELECT * FROM favorites WHERE type = :type") fun observe(type: String): Flow<List<FavoriteEntity>>
+    @Query("SELECT EXISTS(SELECT 1 FROM favorites WHERE type = :type AND targetId = :id)")
+    suspend fun exists(type: String, id: Long): Boolean
+    @Insert suspend fun insert(f: FavoriteEntity)
+    @Query("DELETE FROM favorites WHERE type = :type AND targetId = :id") suspend fun delete(type: String, id: Long)
 }
 ```
 
@@ -142,10 +169,62 @@ class GamesRepository @Inject constructor(
     suspend fun refreshLive() = api.liveBaseball().events
         .filter { /* uniqueTournament.id == 11204 필터 (상세 DTO에 필드 추가해 사용) */ true }
         .forEach { saveEvent(it) }
+
+    // ── 경기 상세 (Step 7에서 사용) ──
+    private val detailMeta = MutableStateFlow<Map<Long, DetailMeta>>(emptyMap())  // 구장·감독·시즌
+
+    fun observeGameDetail(id: Long): Flow<GameDetail?> =
+        combine(dao.observeGame(id), dao.observeInnings(id), detailMeta) { g, inn, meta ->
+            g?.let {
+                GameDetail(
+                    summary = it.toSummary(),
+                    innings = inn.map { r -> InningRuns(r.inning, r.home, r.away) },
+                    venueName = meta[id]?.venueName, capacity = meta[id]?.capacity,
+                    homeManager = null, awayManager = null, seasonName = meta[id]?.season,
+                )
+            }
+        }
+
+    suspend fun refreshGame(id: Long) {
+        val dto = api.event(id)
+        saveEvent(dto)                                  // 점수·이닝 갱신 (Room)
+        detailMeta.update { it + (id to DetailMeta(   // 정적 정보는 메모리 캐시
+            dto.venue?.stadium?.name, dto.venue?.stadium?.capacity, dto.season?.name)) }
+    }
 }
+
+data class DetailMeta(val venueName: String?, val capacity: Int?, val season: String?)
 ```
 
-(엔티티 ↔ 도메인 변환 `toEntity()`/`toSummary()`는 Step 3 매퍼 옆에 추가합니다.)
+### 엔티티 ↔ 도메인 매퍼
+
+`data/local/mapper/EntityMappers.kt` — Repository가 Room 행을 도메인으로, 도메인을 행으로 바꿉니다.
+
+```kotlin
+fun GameEntity.toSummary() = GameSummary(
+    id = eventId,
+    startsAt = Instant.ofEpochSecond(startsAtEpoch),
+    leagueDate = LocalDate.parse(leagueDate),
+    status = GameStatus.valueOf(status),
+    statusLabel = statusLabel,
+    home = TeamRef(homeTeamId, teamNameKo(homeTeamId, homeName), homeCode),
+    away = TeamRef(awayTeamId, teamNameKo(awayTeamId, awayName), awayCode),
+    homeRuns = homeRuns, awayRuns = awayRuns,
+    winner = winner?.let(Winner::valueOf),
+    wentExtra = wentExtra, changeTimestamp = changeTimestamp,
+)
+
+fun GameSummary.toEntity() = GameEntity(
+    eventId = id, startsAtEpoch = startsAt.epochSecond, leagueDate = leagueDate.toString(),
+    status = status.name, statusLabel = statusLabel,
+    homeTeamId = home.id, homeName = home.nameKo, homeCode = home.code,
+    awayTeamId = away.id, awayName = away.nameKo, awayCode = away.code,
+    homeRuns = homeRuns, awayRuns = awayRuns, winner = winner?.name,
+    wentExtra = wentExtra, changeTimestamp = changeTimestamp,
+)
+```
+
+(`saveEvent`의 `s.toEntity()`가 이 함수입니다. `StandingEntity.toDomain()`·`Standing.toEntity(sid)`는 Step 8에서 순위와 함께 만듭니다.)
 
 ## 5. 시즌 프리페치 워커
 

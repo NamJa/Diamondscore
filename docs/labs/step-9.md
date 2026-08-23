@@ -26,6 +26,27 @@ fun DiamondScoreApp() {
 }
 ```
 
+각 탭 그래프는 목록 → 상세로 이어지는 작은 `NavHost`입니다. 예로 경기 탭:
+
+```kotlin
+@Composable
+fun GamesGraph() {
+    val nav = rememberNavController()
+    NavHost(nav, startDestination = "list") {
+        composable("list") { GamesScreen(onGame = { nav.navigate("game/$it") }) }
+        composable("game/{eventId}",
+            arguments = listOf(navArgument("eventId") { type = NavType.LongType })) {
+            GameDetailScreen(onBack = { nav.popBackStack() })
+        }
+    }
+}
+// StandingsGraph(순위→팀 상세)·TeamsGraph(팀 목록→팀 상세)도 같은 모양. 각 탭이 자기 NavController로 back stack 보존.
+```
+
+<div class="callout tip"><span class="t">eventId/teamId 전달</span>
+<code>ViewModel</code>은 <code>SavedStateHandle["eventId"]</code>로 인자를 받습니다(Step 7·8). Navigation 3를 쓴다면 type-safe 키로 같은 그래프를 구성하세요.
+</div>
+
 ## 2. 설정 화면
 
 목업: 테마 세그먼트(시스템/라이트/다크), 라이브 갱신 간격(20초/30초/1분), 알림(P1·비활성), 데이터 출처, 라이선스, 버전.
@@ -57,8 +78,74 @@ fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
 }
 ```
 
-`DsSegmented`는 M3 `SingleChoiceSegmentedButtonRow`로 만들거나, 목업처럼 둥근 배경 위 pill 3개로
-직접 그립니다. 테마 선택은 DataStore에 저장하고 `DiamondScoreTheme`가 이를 읽어 다크/라이트를 전환합니다.
+**ViewModel · 설정 헬퍼** (완전한 코드) — `Caption`·`DsIcon`은 Step 5 §6.
+
+```kotlin
+data class SettingsState(val theme: String = "다크", val interval: String = "20초")
+
+@HiltViewModel
+class SettingsViewModel @Inject constructor(private val store: SettingsStore) : ViewModel() {
+    val ui = store.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsState())
+    fun setTheme(v: String) = viewModelScope.launch { store.setTheme(v) }
+    fun setInterval(v: String) = viewModelScope.launch { store.setInterval(v) }
+}
+// SettingsStore = Proto/Preferences DataStore 래퍼 (state: Flow<SettingsState> + setter 2개)
+
+@Composable
+fun SettingGroup(title: String, content: @Composable ColumnScope.() -> Unit) = Column {
+    Text(title, Modifier.padding(bottom = 10.dp), style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold, color = DsColors.muted2)
+    content()
+}
+
+@Composable
+fun DsSegmented(options: List<String>, selected: String, onSelect: (String) -> Unit) = Row(
+    Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(11.dp))
+        .background(Color(0xFF12161C)).padding(4.dp),
+    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    options.forEach { opt ->
+        val on = opt == selected
+        Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+            .background(if (on) Color(0xFF2A313C) else Color.Transparent)
+            .clickable { onSelect(opt) }.padding(vertical = 8.dp), Alignment.Center) {
+            Text(opt, style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (on) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
+        }
+    }
+}
+
+@Composable
+fun SettingSwitch(title: String, checked: Boolean, enabled: Boolean = true, hint: String? = null) = Row(
+    Modifier.fillMaxWidth().padding(vertical = 12.dp),
+    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+    Column {
+        Text(title, style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
+        hint?.let { Caption(it) }
+    }
+    Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+}
+
+@Composable
+fun SettingRow(key: String, value: String) = Row(
+    Modifier.fillMaxWidth().padding(vertical = 15.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+    Text(key, style = MaterialTheme.typography.bodyLarge)
+    Text(value, style = MaterialTheme.typography.bodyMedium, color = DsColors.muted2)
+}
+
+@Composable
+fun SettingLink(label: String, onClick: () -> Unit = {}) = Row(
+    Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 15.dp),
+    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+    Text(label, style = MaterialTheme.typography.bodyLarge)
+    DsIcon(Icons.Outlined.ChevronRight, size = 20.dp, tint = Color(0xFF55606D))
+}
+```
+
+테마 선택은 DataStore(`SettingsStore`)에 저장하고 `DiamondScoreTheme`가 이를 읽어 다크/라이트를 전환합니다
+(라이트 스킴은 Step 2 §6의 콜아웃대로 하나 더 정의).
 
 ## 3. 상태 화면 연결
 

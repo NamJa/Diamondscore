@@ -96,8 +96,64 @@ fun GameDetailScreen(vm: GameDetailViewModel = hiltViewModel(), onBack: () -> Un
 }
 ```
 
-`InfoTable`은 목업의 정보 카드 그대로 — 경기장, 수용 인원(`23,000석`), 감독(데이터 없으면 `[감독명]`),
-`KBO League 2026 · 1R`.
+### 상세 화면 조각 (완전한 코드)
+
+`feature/gamedetail/DetailParts.kt` — `LabeledBlock`·`Caption`·`DsIcon`은 Step 5 §6에 있습니다.
+
+```kotlin
+@Composable
+fun DetailTopBar(onBack: () -> Unit, favorite: Boolean, onFav: () -> Unit = {}) = Row(
+    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+    IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft) }
+    Text("경기 상세", style = MaterialTheme.typography.titleMedium)
+    IconButton(onClick = onFav) {
+        DsIcon(if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+            tint = if (favorite) DsColors.gold else DsColors.muted2)
+    }
+}
+
+fun statusHeadline(g: GameSummary): String = when (g.status) {
+    GameStatus.LIVE      -> "● ${g.statusLabel}"
+    GameStatus.FINAL     -> if (g.wentExtra) "종료 · 연장" else "종료"
+    GameStatus.SCHEDULED -> "예정"
+    else                 -> g.statusLabel
+}
+
+@Composable
+fun statusColor(g: GameSummary): Color =
+    if (g.status == GameStatus.LIVE) DsColors.live else MaterialTheme.colorScheme.onSurfaceVariant
+
+@Composable
+fun InfoTable(d: GameDetail) = Surface(
+    color = Color(0xFF12161C), shape = RoundedCornerShape(12.dp),
+    border = BorderStroke(1.dp, Color(0xFF232A34))) {
+    Column(Modifier.padding(horizontal = 14.dp)) {
+        InfoRow("경기장", d.venueName ?: "-")
+        InfoRow("수용 인원", d.capacity?.let { "%,d석".format(it) } ?: "-")
+        InfoRow("감독", listOfNotNull(d.awayManager, d.homeManager)
+            .joinToString(" · ").ifEmpty { "[감독명]" })                 // 데이터 없으면 placeholder
+        InfoRow("시즌", d.seasonName ?: "KBO League 2026", last = true)
+    }
+}
+
+@Composable
+private fun InfoRow(k: String, v: String, last: Boolean = false) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 11.dp),
+        horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(k, color = DsColors.muted2, style = MaterialTheme.typography.bodyMedium)
+        Text(v, style = MaterialTheme.typography.bodyMedium)
+    }
+    if (!last) HorizontalDivider(color = Color(0xFF1C222A))
+}
+
+@Composable
+fun DataNote() = Row(Modifier.padding(horizontal = 4.dp),
+    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    DsIcon(Icons.Outlined.InfoOutline, size = 16.dp, tint = DsColors.muted2)
+    Caption("KBO는 이닝별 득점까지 제공됩니다. 볼카운트·주자·라인업·선수 기록은 제공되지 않아 화면에 포함하지 않았습니다.")
+}
+```
 
 ## 4. 종료 확정 처리
 

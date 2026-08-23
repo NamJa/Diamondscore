@@ -150,6 +150,9 @@ interface SofaScoreApi {
 
     @GET("event/{id}")
     suspend fun event(@Path("id") id: Long): EventDto   // 목록·상세 공통 객체 (venue·season이 추가로 채워짐)
+
+    @GET("team/{id}/events/{span}/{page}")              // span = last | next
+    suspend fun teamEvents(@Path("id") id: Long, @Path("span") span: String, @Path("page") page: Int): EventsDto
 }
 ```
 
