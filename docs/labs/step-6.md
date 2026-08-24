@@ -81,10 +81,7 @@ fun GamesScreen(vm: GamesViewModel = hiltViewModel(), onGame: (Long) -> Unit) {
             ui.loading            -> LoadingCards()
             ui.error              -> ErrorState(onRetry = vm::refreshLive)
             ui.games.isEmpty()    -> EmptyDay(onNearest = { /* 가장 가까운 경기일 */ })
-            else -> LazyColumn(
-                contentPadding = PaddingValues(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
+            else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                 sectioned(ui.games).forEach { (title, items) ->
                     item { SectionLabel(title) }                       // 진행 중 / 예정 / 종료
                     items(items, key = { it.id }) { GameCard(it) { onGame(it.id) } }
@@ -94,6 +91,10 @@ fun GamesScreen(vm: GamesViewModel = hiltViewModel(), onGame: (Long) -> Unit) {
     }
 }
 ```
+
+<div class="callout tip"><span class="t">간격: 히어로 vs 라인 로우</span>
+리스트에 <code>spacedBy</code>를 주지 않습니다. <strong>라이브 히어로 카드</strong>는 자체 여백을, <strong>라인 로우</strong>는 자체 상단 헤어라인(§Step 5 <code>GameRow</code>)을 그리므로, 로우들은 카드 간격 없이 <strong>연속</strong>돼야 에디토리얼 느낌이 삽니다. 히어로에 상하 여백이 필요하면 <code>LiveHeroCard</code> 루트에 <code>Modifier.padding(vertical = 6.dp)</code>를 넣으세요.
+</div>
 
 `sectioned()`는 `status`로 진행 중 → 예정 → 종료 순으로 묶는 순수 함수입니다.
 

@@ -147,8 +147,22 @@ private fun GameRow(g: GameSummary, onClick: () -> Unit) = Column {
 }
 ```
 
-`buildAnnotatedFinal(g)`는 "두산 1 · SSG 2"에서 승팀·점수를 강조한 `AnnotatedString`을 만드는 작은
-헬퍼입니다(승팀 `onSurface` 볼드, 나머지 `muted2`).
+`buildAnnotatedFinal(g)`는 "두산 1 · SSG 2"에서 승팀·점수를 강조한 `AnnotatedString`을 만듭니다.
+
+```kotlin
+@Composable
+private fun buildAnnotatedFinal(g: GameSummary): AnnotatedString {
+    val strong = SpanStyle(color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+    val dim = SpanStyle(color = DsColors.muted2)
+    fun AnnotatedString.Builder.side(t: TeamRef, r: Int?, win: Boolean) =
+        withStyle(if (win) strong else dim) { append("${t.nameKo} ${r ?: "-"}") }
+    return buildAnnotatedString {
+        side(g.away, g.awayRuns, g.winner == Winner.AWAY)   // 원정 먼저
+        withStyle(dim) { append("  ·  ") }
+        side(g.home, g.homeRuns, g.winner == Winner.HOME)
+    }
+}
+```
 
 <div class="callout warn"><span class="t">null은 "-", 0이 아니다</span>
 경기 전에는 점수가 <code>null</code>입니다. <code>runs?.toString() ?: "-"</code>로 <strong>미진행</strong>과 <strong>0점</strong>을 구분하세요(Step 3 원칙).

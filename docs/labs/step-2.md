@@ -2,7 +2,7 @@
 
 <div class="chips"><span class="chip time">60분</span><span class="chip diff">쉬움</span><span class="chip goal">프로젝트·의존성 + 목업의 다크 테마·구단 컬러를 코드로 옮긴다</span></div>
 
-실제 프로젝트를 만들고 Kotlin 2.4 / Compose / Retrofit 3 / Room / Hilt / Coil 3를 version catalog로 고정한 뒤, **확정된 목업의 디자인 토큰**(다크 팔레트·타이포·구단 컬러)을 Material 3 테마로 심습니다. 이후 모든 화면이 이 토큰을 씁니다.
+실제 프로젝트를 만들고 Kotlin 2.4 / Compose / Retrofit 3 / Room / Hilt / Coil 3를 version catalog로 고정한 뒤, **확정된 목업의 디자인 토큰**(브로드캐스트 팔레트·Bebas 타이포·구단 컬러)을 Compose 테마(Material 3 `ColorScheme` 컨테이너 위)로 심습니다. 이후 모든 화면이 이 토큰을 씁니다.
 
 ## 1. 새 프로젝트 생성
 
