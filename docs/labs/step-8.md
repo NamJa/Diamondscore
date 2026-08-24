@@ -14,7 +14,7 @@ fun StandingsScreen(vm: StandingsViewModel = hiltViewModel(), onTeam: (Long) -> 
     val rows by vm.ui.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("순위", trailing = { SeasonChip("2026 정규시즌") })
-        StandingsHeader()   // # 팀 경기 승·패·무 승률 GB
+        StandingsHeader()   // # 팀 승·패·무 승률 GB
         LazyColumn {
             rows.forEachIndexed { i, s ->
                 item(key = s.team.id) { StandingRow(s) { onTeam(s.team.id) } }
@@ -78,9 +78,8 @@ class StandingsViewModel @Inject constructor(
 @Composable
 fun StandingsHeader() = Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
     val st = MaterialTheme.typography.labelSmall; val c = DsColors.muted2
-    Text("#", Modifier.width(28.dp), style = st, color = c)
-    Text("팀", Modifier.weight(1f).padding(start = 12.dp), style = st, color = c)
-    Text("경기", Modifier.width(34.dp), style = st, color = c, textAlign = TextAlign.Center)
+    Text("#", Modifier.width(30.dp), style = st, color = c)
+    Text("팀", Modifier.weight(1f).padding(start = 18.dp), style = st, color = c)   // 닷+간격 정렬
     Text("승·패·무", Modifier.width(78.dp), style = st, color = c, textAlign = TextAlign.Center)
     Text("승률", Modifier.width(46.dp), style = st, color = c, textAlign = TextAlign.End)
     Text("GB", Modifier.width(40.dp), style = st, color = c, textAlign = TextAlign.End)

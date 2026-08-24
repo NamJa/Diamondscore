@@ -11,7 +11,14 @@
 </div>
 
 모든 컴포넌트는 `com.diamondscore.core.designsystem` 패키지에 두고, Step 2의 `DsColors`·`teamColor`·
-`teamShort`·`ScoreNumber`와 Step 3의 도메인 모델(`GameSummary`·`GameStatus`·`InningRuns`·`Standing`)을 씁니다.
+`teamShort`·`ScoreNumber`·**`Display`(Bebas)**와 Step 3의 도메인 모델(`GameSummary`·`GameStatus`·
+`InningRuns`·`Standing`)을 씁니다.
+
+<div class="callout tip"><span class="t">브로드캐스트 × 에디토리얼 원칙</span>
+<strong>라이브</strong>는 A(브로드캐스트) — 레드 그라디언트 보더 히어로 + 초대형 Bebas 스코어 + VS.
+<strong>예정·종료·순위·정보</strong>는 C(에디토리얼) — 카드 없이 <strong>헤어라인 + 여백</strong>의 라인 로우.
+큰 숫자·헤더는 <code>Display</code>(Bebas), 표의 작은 숫자는 <code>ScoreNumber</code>(등폭).
+</div>
 
 <div class="callout tip"><span class="t">코드에 나오는 작은 헬퍼들</span>
 <code>DsIcon</code>·<code>DsTabIcon</code>·<code>CenterColumn</code>·<code>TopBar</code>·<code>HeaderCell</code>·<code>TeamCell</code>·
@@ -29,16 +36,19 @@ enum class DsTab(val label: String) { GAMES("경기"), STANDINGS("순위"), TEAM
 
 @Composable
 fun DsBottomBar(current: DsTab, onSelect: (DsTab) -> Unit) {
-    NavigationBar(containerColor = Color(0xFF10141A), tonalElevation = 0.dp) {
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.background,   // 브로드캐스트: 배경과 동일
+        tonalElevation = 0.dp,
+    ) {
         DsTab.entries.forEach { tab ->
             NavigationBarItem(
                 selected = tab == current,
                 onClick = { onSelect(tab) },
                 icon = { DsTabIcon(tab) },
-                label = { Text(tab.label, style = MaterialTheme.typography.labelSmall) },
+                label = { Text(tab.label, style = Display.copy(fontSize = 15.sp)) },   // Bebas 라벨
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = DsColors.live, selectedTextColor = DsColors.live,
-                    indicatorColor = Color.Transparent,
+                    indicatorColor = Color.Transparent,                                // pill 없음
                     unselectedIconColor = DsColors.muted2, unselectedTextColor = DsColors.muted2,
                 ),
             )
@@ -50,63 +60,95 @@ fun DsBottomBar(current: DsTab, onSelect: (DsTab) -> Unit) {
 아이콘은 `Icons.Outlined.CalendarMonth / EmojiEvents / Shield / StarBorder`(material-icons-extended)로
 간단히 대체하거나, 목업의 라인 아이콘을 `ImageVector`로 옮깁니다.
 
-## 2. 경기 카드 (GameCard) — 4가지 상태
+## 2. 경기 카드 (GameCard) — 라이브 히어로 + 라인 로우
 
-목업의 핵심 부품. **원정팀을 먼저**(위) 표시하고, 팀 컬러 바·상태 칩·등폭 점수를 씁니다.
-진행/예정/종료/취소를 한 컴포넌트가 상태로 분기합니다.
+**라이브는 히어로 카드, 나머지는 라인 로우**로 분기합니다. **원정팀을 먼저** 둡니다.
 
 `components/GameCard.kt`:
 
 ```kotlin
 @Composable
 fun GameCard(game: GameSummary, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column {
-            StatusRow(game)
-            HorizontalDivider(color = Color(0xFF20262F))
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                TeamRow(game.away, game.awayRuns, emphasize = game.winner == Winner.AWAY)  // 원정 먼저
-                TeamRow(game.home, game.homeRuns, emphasize = game.winner == Winner.HOME)
+    if (game.status == GameStatus.LIVE) LiveHeroCard(game, onClick)
+    else GameRow(game, onClick)
+}
+
+/** 라이브 — 레드 그라디언트 보더 + 초대형 Bebas 스코어 + VS. */
+@Composable
+private fun LiveHeroCard(g: GameSummary, onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+        .background(Brush.linearGradient(listOf(DsColors.live, DsColors.live.copy(alpha = .35f))))
+        .padding(1.dp).clickable(onClick = onClick)) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(21.dp))
+            .background(MaterialTheme.colorScheme.surface).padding(18.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                LiveBadge(g.statusLabel)
+                Text(g.venueShort ?: "", color = DsColors.muted2, style = MaterialTheme.typography.labelSmall)
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                HeroSide(g.away, g.awayRuns, Modifier.weight(1f))                 // 원정 먼저
+                Text("VS", style = Display.copy(fontSize = 22.sp), color = DsColors.muted2)
+                HeroSide(g.home, g.homeRuns, Modifier.weight(1f), accent = true)
             }
         }
     }
 }
 
 @Composable
-private fun StatusRow(g: GameSummary) {
-    val (label, color) = when (g.status) {
-        GameStatus.LIVE      -> "● ${g.statusLabel}" to DsColors.live
-        GameStatus.FINAL     -> (if (g.wentExtra) "종료 · 연장" else "종료") to MaterialTheme.colorScheme.onSurfaceVariant
-        GameStatus.SCHEDULED -> g.startsAt.atZone(SEOUL).toLocalTime().toString().take(5) to MaterialTheme.colorScheme.onSurface
-        else                 -> g.statusLabel to DsColors.gold   // 취소·연기
+private fun HeroSide(t: TeamRef, runs: Int?, mod: Modifier, accent: Boolean = false) =
+    Column(mod, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(teamShort(t.id), style = Display.copy(fontSize = 19.sp),
+            color = if (accent) DsColors.live else MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(runs?.toString() ?: "-", maxLines = 1, style = Display.copy(fontSize = 60.sp),
+            color = if (accent) DsColors.live else MaterialTheme.colorScheme.onSurface)   // null=미진행
     }
-    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = color, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-        Text(g.venueShort ?: "", color = DsColors.muted2, style = MaterialTheme.typography.labelSmall)
-    }
-}
 
 @Composable
-private fun TeamRow(team: TeamRef, runs: Int?, emphasize: Boolean) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(4.dp).height(22.dp).clip(RoundedCornerShape(2.dp)).background(teamColor(team.id)))
-            Text(team.nameKo, style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (emphasize) FontWeight.Bold else FontWeight.Normal)
+private fun LiveBadge(label: String) = Row(
+    Modifier.clip(RoundedCornerShape(999.dp)).background(DsColors.live)
+        .padding(horizontal = 12.dp, vertical = 5.dp),
+    horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White))       // 깜빡임은 §states 애니메이션 재사용
+    Text("LIVE · $label", color = Color.White, fontWeight = FontWeight.Bold,
+        style = MaterialTheme.typography.labelMedium)
+}
+
+/** 예정·종료·연기 — 카드 없이 헤어라인 + 여백의 라인 로우(에디토리얼). */
+@Composable
+private fun GameRow(g: GameSummary, onClick: () -> Unit) = Column {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)      // 위 헤어라인
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick)
+        .padding(horizontal = 6.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        when (g.status) {
+            GameStatus.SCHEDULED -> {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(g.startsAt.atZone(SEOUL).toLocalTime().toString().take(5),
+                        style = Display.copy(fontSize = 20.sp), color = DsColors.muted2)
+                    Text("${g.away.nameKo} · ${g.home.nameKo}", style = MaterialTheme.typography.bodyLarge)
+                }
+                Text(g.venueShort ?: "", color = DsColors.muted2, style = MaterialTheme.typography.labelSmall)
+            }
+            GameStatus.FINAL -> {
+                Text(buildAnnotatedFinal(g), style = MaterialTheme.typography.bodyLarge)
+                Text(if (g.wentExtra) "연장" else "종료", color = DsColors.muted2,
+                    style = MaterialTheme.typography.labelSmall)
+            }
+            else -> {   // 취소·연기
+                Text("${g.away.nameKo} · ${g.home.nameKo}", color = DsColors.muted2,
+                    style = MaterialTheme.typography.bodyLarge)
+                Text(g.statusLabel, color = DsColors.gold, style = MaterialTheme.typography.labelSmall)
+            }
         }
-        Text(runs?.toString() ?: "-", style = ScoreNumber.copy(fontSize = 22.sp),
-            color = if (emphasize) DsColors.live else MaterialTheme.colorScheme.onSurface)
     }
 }
 ```
+
+`buildAnnotatedFinal(g)`는 "두산 1 · SSG 2"에서 승팀·점수를 강조한 `AnnotatedString`을 만드는 작은
+헬퍼입니다(승팀 `onSurface` 볼드, 나머지 `muted2`).
 
 <div class="callout warn"><span class="t">null은 "-", 0이 아니다</span>
 경기 전에는 점수가 <code>null</code>입니다. <code>runs?.toString() ?: "-"</code>로 <strong>미진행</strong>과 <strong>0점</strong>을 구분하세요(Step 3 원칙).
@@ -115,7 +157,7 @@ private fun TeamRow(team: TeamRef, runs: Int?, emphasize: Boolean) {
 **Preview로 4상태 한 번에 확인** — 목업의 카드와 나란히 비교합니다.
 
 ```kotlin
-@Preview(backgroundColor = 0xFF0E1116, showBackground = true, widthDp = 360)
+@Preview(backgroundColor = 0xFF07080B, showBackground = true, widthDp = 360)
 @Composable
 private fun GameCardPreview() = DiamondScoreTheme {
     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -139,8 +181,8 @@ private fun GameCardPreview() = DiamondScoreTheme {
 @Composable
 fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>, awayR: Int?, homeR: Int?) {
     val count = maxOf(9, innings.maxOfOrNull { it.number } ?: 9)
-    Surface(color = Color(0xFF12161C), shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFF232A34))) {
+    Column {   // 에디토리얼: 카드 대신 위·아래 헤어라인
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         Row(Modifier.horizontalScroll(rememberScrollState())) {    // 연장 시 가로 스크롤
             Column {
                 HeaderCell("", width = 64.dp); TeamCell(teamShort(away.id)); TeamCell(teamShort(home.id))
@@ -158,6 +200,7 @@ fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>, away
                 HeaderCell("R", strong = true); TotalCell(awayR); TotalCell(homeR)
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
     }
 }
 
@@ -187,7 +230,7 @@ fun TeamCell(text: String, width: Dp = 64.dp) =
 @Composable
 fun TotalCell(v: Int?, width: Dp = 34.dp) =
     Box(Modifier.width(width).height(38.dp), Alignment.Center) {
-        Text(v?.toString() ?: "", style = ScoreNumber.copy(fontSize = 14.sp), fontWeight = FontWeight.Bold)
+        Text(v?.toString() ?: "", style = Display.copy(fontSize = 18.sp))   // Bebas R
     }
 ```
 
@@ -197,45 +240,44 @@ fun TotalCell(v: Int?, width: Dp = 34.dp) =
 
 ## 4. 순위 행 (StandingRow) + 진출선
 
-목업의 순위표: 순위·팀(컬러)·경기·**승·패·무**·승률·게임차. 상위 5팀은 좌측 컬러 바, 5위 뒤에 진출선.
+에디토리얼 라인 로우: **Bebas 순위 숫자** + 팀컬러 닷 + **승·패·무**·승률·게임차. 5위 뒤에 진출선.
+(경기 수 컬럼은 목업에서 뺐습니다 — 승·패·무 합으로 알 수 있음)
 
 `components/StandingRow.kt`:
 
 ```kotlin
 @Composable
-fun StandingRow(s: Standing, onClick: () -> Unit) {
-    val tierColor = when {
-        s.position == 1 -> DsColors.gold
-        s.position <= 5 -> Color(0xFF3A4C6B)
-        else -> Color.Transparent
-    }
+fun StandingRow(s: Standing, onClick: () -> Unit) = Column {
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)      // 위 헤어라인
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
-            .drawBehind { drawRect(tierColor, size = size.copy(width = 3.dp.toPx())) }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("${s.position}", Modifier.width(28.dp), style = ScoreNumber,
+        Text("${s.position}", Modifier.width(30.dp), style = Display.copy(fontSize = 22.sp),
+            color = when { s.position == 1 -> DsColors.gold                    // 1위 골드
+                           s.position <= 5 -> MaterialTheme.colorScheme.onSurface
+                           else -> DsColors.muted2 })
+        Box(Modifier.size(8.dp).clip(CircleShape).background(teamColor(s.team.id)))   // 팀 컬러 닷
+        Spacer(Modifier.width(10.dp))
+        Text(s.team.nameKo, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
             color = if (s.position <= 5) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
-        Box(Modifier.width(3.dp).height(20.dp).clip(RoundedCornerShape(2.dp)).background(teamColor(s.team.id)))
-        Spacer(Modifier.width(9.dp))
-        Text(s.team.nameKo, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-        Text("${s.games}", Modifier.width(34.dp), style = ScoreNumber, textAlign = TextAlign.Center)
-        Text("${s.wins}·${s.losses}·${s.draws}", Modifier.width(78.dp),   // 승·패·무 (무 파생!)
-            style = ScoreNumber, textAlign = TextAlign.Center)
+        Text("${s.wins}·${s.losses}·${s.draws}", Modifier.width(78.dp),       // 승·패·무 (무 파생!)
+            style = ScoreNumber.copy(fontSize = 13.sp), textAlign = TextAlign.Center)
         Text("%.3f".format(s.winPct).removePrefix("0"), Modifier.width(46.dp),
-            style = ScoreNumber, textAlign = TextAlign.End)
+            style = Display.copy(fontSize = 17.sp), textAlign = TextAlign.End)     // 승률 Bebas
         Text(if (s.gamesBehind == 0.0) "-" else "%.1f".format(s.gamesBehind),
-            Modifier.width(40.dp), style = ScoreNumber, textAlign = TextAlign.End, color = DsColors.muted2)
+            Modifier.width(40.dp), style = ScoreNumber.copy(fontSize = 12.sp),
+            textAlign = TextAlign.End, color = DsColors.muted2)
     }
 }
 
 @Composable
-fun PlayoffDivider() = Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+fun PlayoffDivider() = Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
     verticalAlignment = Alignment.CenterVertically) {
-    HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outline)
-    Text(" 포스트시즌 진출선 ", color = DsColors.muted2, style = MaterialTheme.typography.labelSmall)
-    HorizontalDivider(Modifier.weight(1f), color = MaterialTheme.colorScheme.outline)
+    HorizontalDivider(Modifier.weight(1f), color = DsColors.live.copy(alpha = .3f))
+    Text(" POSTSEASON ", color = DsColors.live, style = Display.copy(fontSize = 13.sp))
+    HorizontalDivider(Modifier.weight(1f), color = DsColors.live.copy(alpha = .3f))
 }
 ```
 

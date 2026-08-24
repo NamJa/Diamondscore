@@ -102,16 +102,16 @@ fun SettingGroup(title: String, content: @Composable ColumnScope.() -> Unit) = C
 fun DsSegmented(options: List<String>, selected: String, onSelect: (String) -> Unit) = Row(
     Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(11.dp))
-        .background(Color(0xFF12161C)).padding(4.dp),
+        .background(MaterialTheme.colorScheme.surface).padding(4.dp),
     horizontalArrangement = Arrangement.spacedBy(4.dp)) {
     options.forEach { opt ->
         val on = opt == selected
         Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-            .background(if (on) Color(0xFF2A313C) else Color.Transparent)
+            .background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent)   // 액티브 = 레드
             .clickable { onSelect(opt) }.padding(vertical = 8.dp), Alignment.Center) {
             Text(opt, style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (on) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
+                fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                color = if (on) MaterialTheme.colorScheme.onPrimary else DsColors.muted2)
         }
     }
 }

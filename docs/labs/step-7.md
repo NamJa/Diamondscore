@@ -66,7 +66,7 @@ private fun TeamScoreRow(t: TeamRef, runs: Int?, side: String, win: Boolean) {
                 Text(if (win) "$side · 승" else side, style = MaterialTheme.typography.labelSmall, color = DsColors.muted2)
             }
         }
-        Text(runs?.toString() ?: "-", style = ScoreNumber.copy(fontSize = 34.sp),
+        Text(runs?.toString() ?: "-", style = Display.copy(fontSize = 44.sp),   // Bebas 대형 스코어
             color = if (win) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
     }
 }

@@ -188,10 +188,11 @@ class DiamondScoreApp : Application()
     ... >
 ```
 
-## 6. 다크 팔레트 — 목업의 토큰을 M3 ColorScheme으로
+## 6. 브로드캐스트 팔레트 (다크 + 라이트)
 
-목업은 다크 우선입니다. 그 정확한 색값을 Material 3 `darkColorScheme`으로 옮기고, M3에 없는
-의미색(라이브 레드·골드·승/패)은 별도 객체로 둡니다.
+디자인은 **브로드캐스트 × 에디토리얼** — 근블랙 다크가 기본, 페이퍼 라이트가 변형입니다. 목업의
+정확한 색을 Compose 테마로 옮깁니다. 기본색(배경·서피스·본문·라인·액센트)은 M3 `ColorScheme`에
+매핑해 M3 컴포넌트가 그대로 동작하게 하고, 의미색(라이브·골드·승/패)은 `DsColors`에 둡니다.
 
 `app/src/main/java/com/diamondscore/core/designsystem/Color.kt`:
 
@@ -199,64 +200,128 @@ class DiamondScoreApp : Application()
 package com.diamondscore.core.designsystem
 
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
+// 다크(기본) — 근블랙 + 브로드캐스트 레드
 val DsDarkColors = darkColorScheme(
-    primary          = Color(0xFFFF5563),   // 라이브·강조 레드
-    onPrimary        = Color(0xFF2A0A0E),
-    background       = Color(0xFF0E1116),
-    onBackground     = Color(0xFFE8ECF1),
-    surface          = Color(0xFF161B22),   // 카드
-    onSurface        = Color(0xFFE8ECF1),
-    surfaceVariant   = Color(0xFF1E242E),
-    onSurfaceVariant = Color(0xFF98A2B2),   // muted 텍스트
-    outline          = Color(0xFF2A313C),   // 카드 테두리·구분선
+    primary          = Color(0xFFFF2D4B),   // 라이브·강조
+    onPrimary        = Color(0xFFFFFFFF),
+    background       = Color(0xFF07080B),
+    onBackground     = Color(0xFFEDEFF3),
+    surface          = Color(0xFF0C0E14),   // 라이브 히어로 카드
+    onSurface        = Color(0xFFEDEFF3),
+    surfaceVariant   = Color(0xFF12141C),
+    onSurfaceVariant = Color(0xFF8B90A0),   // muted 텍스트
+    outline          = Color(0xFF191C24),   // 라인·구분선
+    outlineVariant   = Color(0xFF15171E),   // 헤어라인
 )
 
-/** M3 역할로 안 잡히는 의미색 (목업 기준). */
+// 라이트 변형 — 페이퍼 + 딥 레드
+val DsLightColors = lightColorScheme(
+    primary          = Color(0xFFD21F3C),
+    onPrimary        = Color(0xFFFFFFFF),
+    background       = Color(0xFFFBFAF7),
+    onBackground     = Color(0xFF161513),
+    surface          = Color(0xFFFFFFFF),
+    onSurface        = Color(0xFF161513),
+    surfaceVariant   = Color(0xFFEFEDE6),
+    onSurfaceVariant = Color(0xFF6B6862),
+    outline          = Color(0xFFE4E0D8),
+    outlineVariant   = Color(0xFFECE8E0),
+)
+
+/** M3 역할로 안 잡히는 의미색. 다크/라이트 두 세트. */
+data class DsExtras(
+    val liveDot: Color, val gold: Color, val win: Color, val loss: Color,
+    val staleBg: Color, val staleLine: Color, val faint: Color,
+)
+val DarkExtras  = DsExtras(Color(0xFFFF2D4B), Color(0xFFE7B24A), Color(0xFF39D98A), Color(0xFFC83250),
+                           Color(0xFF241C0B), Color(0xFF4A3D1E), Color(0xFF4A4E5C))
+val LightExtras = DsExtras(Color(0xFFD21F3C), Color(0xFFB98900), Color(0xFF1E9E5E), Color(0xFFC83250),
+                           Color(0xFFFBF3DC), Color(0xFFE8DCBE), Color(0xFFB4AFA4))
+
+val LocalDsExtras = androidx.compose.runtime.staticCompositionLocalOf { DarkExtras }
+
+/** 의미색을 테마 인지형으로 읽는 접근자 — 컴포저블 안에서 `DsColors.live` 처럼 씁니다. */
 object DsColors {
-    val live       = Color(0xFFFF5563)
-    val liveDot    = Color(0xFFFF3A4C)
-    val gold       = Color(0xFFE6B450)   // 진출권·즐겨찾기
-    val win        = Color(0xFF3FB980)
-    val loss       = Color(0xFFFF6B78)
-    val staleBg    = Color(0xFF221D12)
-    val staleLine  = Color(0xFF4A3D1E)
-    val muted2     = Color(0xFF6B727E)   // 보조 캡션
+    val live: Color      @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primary
+    val liveDot: Color   @Composable @ReadOnlyComposable get() = LocalDsExtras.current.liveDot
+    val gold: Color      @Composable @ReadOnlyComposable get() = LocalDsExtras.current.gold
+    val win: Color       @Composable @ReadOnlyComposable get() = LocalDsExtras.current.win
+    val loss: Color      @Composable @ReadOnlyComposable get() = LocalDsExtras.current.loss
+    val staleBg: Color   @Composable @ReadOnlyComposable get() = LocalDsExtras.current.staleBg
+    val staleLine: Color @Composable @ReadOnlyComposable get() = LocalDsExtras.current.staleLine
+    val muted2: Color    @Composable @ReadOnlyComposable get() = LocalDsExtras.current.faint
 }
 ```
+> `DsColors`는 `@Composable` 프로퍼티 getter라 컴포저블 안에서만 읽힙니다(모든 UI 코드가 그렇습니다).
+> 추가 import: `androidx.compose.material3.MaterialTheme`, `androidx.compose.runtime.{Composable, ReadOnlyComposable}`.
 
-<div class="callout tip"><span class="t">라이트 테마</span>
-MVP는 다크 우선입니다. 라이트도 지원하려면 같은 역할로 <code>lightColorScheme</code>을 하나 더 만들고 §설정에서 전환합니다(Step 9). 지금은 다크만 만들어 진도를 냅니다.
+<div class="callout tip"><span class="t">색을 읽는 법</span>
+배경·서피스·본문·라인·액센트는 <code>MaterialTheme.colorScheme.{background,surface,onSurface,onSurfaceVariant,outline,primary}</code>로, 라이브 닷·골드·승/패는 <code>LocalDsExtras.current.{liveDot,gold,win,loss}</code>로 읽습니다. 이렇게 하면 다크↔라이트 전환 시 색이 자동으로 바뀝니다.
 </div>
 
-## 7. 타이포그래피 — 점수는 등폭 숫자
+## 7. 타이포그래피 — Bebas Neue + Archivo + Noto Sans KR
 
-목업은 본문에 한글 산세리프, **점수·기록에는 등폭(tabular) 숫자**를 씁니다. 숫자가 자리에서
-흔들리지 않아야 라인스코어·순위표가 깔끔합니다.
+스코어·헤더는 **Bebas Neue**(콘덴스드 디스플레이), 본문·UI는 **Archivo + Noto Sans KR**, 숫자는
+**등폭(tabular)**. 세 폰트는 Google Fonts에서 받습니다.
 
-`app/src/main/java/com/diamondscore/core/designsystem/Type.kt`:
+`app/build.gradle.kts` 의존성에 추가:
+
+```kotlin
+implementation("androidx.compose.ui:ui-text-google-fonts")
+```
+
+`core/designsystem/Type.kt`:
 
 ```kotlin
 package com.diamondscore.core.designsystem
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.*
+import androidx.compose.ui.text.googlefonts.GoogleFont
+import androidx.compose.ui.text.googlefonts.Font
 import androidx.compose.ui.unit.sp
+import com.diamondscore.R
 
-val DsTypography = Typography()   // M3 기본(시스템 한글 폰트) 사용
+private val provider = GoogleFont.Provider(
+    "com.google.android.gms.fonts",
+    "com.google.android.gms",
+    R.array.com_google_android_gms_fonts_certs,
+)
+private fun gf(name: String, w: FontWeight) = FontFamily(Font(GoogleFont(name), provider, w))
 
-/** 점수·이닝·승률 등 숫자 전용 — 등폭으로 자리 고정. */
+val Bebas   = FontFamily(Font(GoogleFont("Bebas Neue"), provider, FontWeight.Normal))
+val Archivo = FontFamily(
+    Font(GoogleFont("Archivo"), provider, FontWeight.Normal),
+    Font(GoogleFont("Archivo"), provider, FontWeight.Medium),
+    Font(GoogleFont("Archivo"), provider, FontWeight.Bold),
+)
+
+/** 본문·UI (한글은 시스템 Noto Sans KR로 자동 폴백). */
+val DsTypography = Typography().let { t ->
+    t.copy(
+        titleLarge = t.titleLarge.copy(fontFamily = Archivo, fontWeight = FontWeight.Bold),
+        bodyLarge  = t.bodyLarge.copy(fontFamily = Archivo),
+        bodyMedium = t.bodyMedium.copy(fontFamily = Archivo),
+        labelLarge = t.labelLarge.copy(fontFamily = Archivo, fontWeight = FontWeight.Medium),
+        labelSmall = t.labelSmall.copy(fontFamily = Archivo),
+    )
+}
+
+/** 스코어·큰 숫자·섹션 헤더 — Bebas. */
+val Display = TextStyle(fontFamily = Bebas, letterSpacing = 0.02.em)
+/** 표·순위의 작은 숫자 — Archivo 등폭. */
 val ScoreNumber = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontWeight = FontWeight.SemiBold,
+    fontFamily = Archivo, fontWeight = FontWeight.Medium,
+    fontFeatureSettings = "tnum",   // tabular numbers
 )
 ```
 
-<div class="callout tip"><span class="t">디자인 폰트를 그대로 쓰려면</span>
-목업은 <code>IBM Plex Sans KR / Mono</code>로 렌더했습니다. 앱에서 동일하게 하려면 폰트 파일을 <code>res/font/</code>에 넣고 <code>FontFamily(Font(R.font.…))</code>로 교체하세요. 튜토리얼은 진도를 위해 시스템 한글 폰트 + <code>Monospace</code>로 갑니다.
+<div class="callout tip"><span class="t">오프라인 대안</span>
+Google Fonts 다운로드가 부담되면 <code>Bebas Neue</code>·<code>Archivo</code> <code>.ttf</code>를 <code>res/font/</code>에 넣고 <code>FontFamily(Font(R.font.bebas_neue))</code>로 바꾸면 됩니다. 한글은 시스템 Noto Sans KR가 폴백합니다. <code>Display</code>는 콘덴스드라 <strong>초대형 스코어·섹션 헤더 전용</strong>, 본문엔 쓰지 않습니다.
 </div>
 
 ## 8. 구단 컬러 + 한국어 팀명
@@ -264,7 +329,7 @@ val ScoreNumber = TextStyle(
 API는 한국어 팀명을 주지 않고 `teamColors`가 전 구단 동일합니다. 목업의 구단 컬러와 한글명을
 **앱에 직접** 넣습니다.
 
-`app/src/main/java/com/diamondscore/core/designsystem/KboTeams.kt`:
+`core/designsystem/KboTeams.kt`:
 
 ```kotlin
 package com.diamondscore.core.designsystem
@@ -274,7 +339,7 @@ import androidx.compose.ui.graphics.Color
 data class KboTeam(val id: Long, val nameKo: String, val short: String, val color: Color)
 
 val KBO_TEAMS: Map<Long, KboTeam> = listOf(
-    KboTeam(188409, "KT 위즈",     "KT",  Color(0xFF6B7280)), // 검정은 다크 배경에서 안 보여 회색 대체
+    KboTeam(188409, "KT 위즈",     "KT",  Color(0xFF8A8D91)), // 검정은 안 보여 회색 대체
     KboTeam(188245, "삼성 라이온즈", "삼성", Color(0xFF074CA1)),
     KboTeam(188257, "LG 트윈스",    "LG",  Color(0xFFC30452)),
     KboTeam(188248, "두산 베어스",  "두산", Color(0xFF232A63)),
@@ -288,30 +353,34 @@ val KBO_TEAMS: Map<Long, KboTeam> = listOf(
 
 fun teamNameKo(id: Long, fallback: String): String = KBO_TEAMS[id]?.nameKo ?: fallback
 fun teamShort(id: Long): String = KBO_TEAMS[id]?.short ?: "?"
-fun teamColor(id: Long): Color = KBO_TEAMS[id]?.color ?: Color(0xFF6B7280)
+fun teamColor(id: Long): Color = KBO_TEAMS[id]?.color ?: Color(0xFF8A8D91)
 ```
 
-## 9. 테마 Composable
+## 9. 테마 Composable — 다크 기본 + 라이트
 
-`app/src/main/java/com/diamondscore/core/designsystem/Theme.kt`:
+`core/designsystem/Theme.kt`:
 
 ```kotlin
 package com.diamondscore.core.designsystem
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 
 @Composable
-fun DiamondScoreTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = DsDarkColors,
-        typography = DsTypography,
-        content = content,
-    )
+fun DiamondScoreTheme(dark: Boolean = true, content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalDsExtras provides if (dark) DarkExtras else LightExtras) {
+        MaterialTheme(
+            colorScheme = if (dark) DsDarkColors else DsLightColors,
+            typography = DsTypography,
+            content = content,
+        )
+    }
 }
 ```
 
-`MainActivity`의 `setContent { }`를 `DiamondScoreTheme { … }`로 감쌉니다.
+`MainActivity`의 `setContent { }`를 `DiamondScoreTheme { … }`로 감쌉니다. `dark`는 Step 9 설정에서
+DataStore 값으로 제어합니다(기본 다크).
 
 ## 10. 빌드 확인
 
@@ -319,7 +388,7 @@ fun DiamondScoreTheme(content: @Composable () -> Unit) {
 ./gradlew :app:assembleDebug
 ```
 
-<div class="checkpoint"><span class="t"></span> <code>BUILD SUCCESSFUL</code>이 뜨고, ▶로 실행 시 배경이 <code>#0E1116</code> 다크로 칠해지면 디자인 시스템까지 완료. (컴포넌트는 Step 5에서 만듭니다)</div>
+<div class="checkpoint"><span class="t"></span> <code>BUILD SUCCESSFUL</code>이 뜨고, ▶로 실행 시 배경이 <code>#07080B</code> 근블랙으로 칠해지면 디자인 시스템까지 완료. (컴포넌트는 Step 5에서 만듭니다)</div>
 
 <div class="pager">
 <a href="#/labs/step-1">← Step 1</a>
