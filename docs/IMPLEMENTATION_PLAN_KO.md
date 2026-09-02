@@ -3,7 +3,7 @@
 > 기준일: 2026-08-02 · 통합·재개편: 2026-08-23 (단일 계획 문서)
 > 전제: **개인/포트폴리오 용도**, **백엔드 서버 없음(앱에서 직접 호출)**
 > 데이터 소스: **SofaScore API (`api.sofascore.com/api/v1`)**, KBO `uniqueTournament.id = 11204`
-> 스택: Kotlin 2.4 · Compose · Retrofit 3 · Coil 3 · KSP2 (전체 표 §5.4)
+> 스택: Kotlin 2.4 · AGP 9.4 · Compose · Navigation 3 · Retrofit 3 · Coil 3 · KSP2 (전체 표 §5.4, 2026-09-02 실측)
 > 엔드포인트 분석 원자료(전체 목록·난독화 매핑·추출 스크립트)는 공개 저장소에서 제외한 별도 로컬 자료다.
 
 > **이 문서가 프로젝트의 유일한 계획 문서다.** 제품 요구사항(무엇을)과 구현 계획(어떻게)을 한곳에
@@ -462,14 +462,18 @@ fun parseInnings(home: Map<String, InningRunDto>, away: Map<String, InningRunDto
 ## 5. 아키텍처와 기술 스택
 
 ```
-Compose UI  ──events──▶  ViewModel  ──▶  UseCase  ──▶  Repository
-    ▲                                                      │
-    └──── StateFlow<UiState> ◀── Room(SSOT) ◀──────────────┘
-                                                            ▼
-                                                   KboDataSource
-                                                   └ SofaScoreDataSource (Retrofit)
-                                                   └ FakeDataSource (fixture, 테스트)
+Compose UI  ──events──▶  ViewModel  ──────────────▶  Repository
+    ▲                                                    │
+    └──── StateFlow<UiState> ◀── Room(SSOT) ◀────────────┘
+                                                          ▼
+                                                 KboDataSource
+                                                 └ SofaScoreDataSource (Retrofit)
+                                                 └ FakeDataSource (fixture, 테스트)
 ```
+
+**UseCase 계층은 두지 않는다.** 이 앱의 화면-데이터 관계는 1:1이고, 재사용되는 도메인 로직은
+`parseInnings`·`draws` 파생처럼 순수 함수라 매퍼에 있다. ViewModel과 Repository 사이에 클래스를 한 겹
+더 넣으면 위임만 하는 파일이 화면 수만큼 생긴다. 로직이 두 화면에서 실제로 겹칠 때 그때 만든다.
 
 Android 공식 가이드의 계층·단방향 흐름·SSOT 원칙을 따른다. UI는 `ViewModel`의 불변 `UiState`를
 `collectAsStateWithLifecycle()`로 구독하고 이벤트를 위로 올린다. 개인용 트랙은 BFF 계층이 없으므로
@@ -481,17 +485,33 @@ Android 공식 가이드의 계층·단방향 흐름·SSOT 원칙을 따른다. 
 
 ```
 com.diamondscore
-├─ core/          designsystem/(theme, TeamColors, components), common/(time, Result)
+├─ DiamondScoreApp.kt   ← Nav3 back stack + entryProvider (여기만 전체 화면을 안다)
+├─ core/
+│   ├─ common/          time, KboTeams(순수 표), Result — Compose·Android 없음
+│   ├─ navigation/      DsNavKeys(NavKey) — 순수 Kotlin + kotlinx.serialization
+│   ├─ designsystem/    Color, Type, Theme, TeamColors — 도메인을 모른다
+│   └─ ui/              GameCard, LineScoreTable, StandingRow, States, DsHelpers — 도메인은 알고 화면은 모른다
 ├─ data/
-│   ├─ remote/    SofaScoreApi, dto/, KboDataSource, SofaScoreDataSource, mapper/
-│   ├─ local/     entity/, dao/, DiamondScoreDatabase
-│   └─ repository/ GamesRepository, StandingsRepository, TeamsRepository
-├─ domain/        model/, usecase/
-└─ feature/       games/, gamedetail/, standings/, teams/, favorites/, settings/
+│   ├─ remote/          SofaScoreApi, dto/, mapper/, di/NetworkModule
+│   ├─ local/           entity/, dao/, mapper/, di/DatabaseModule, DiamondScoreDatabase
+│   ├─ repository/      Games, Standings, Teams, Favorites, SettingsStore
+│   └─ sync/            PrefetchWorker
+├─ domain/model/        GameSummary, GameDetail, Standing, TeamDetail, TeamRef …
+└─ feature/             games/, gamedetail/, standings/, teams/, favorites/, settings/
 ```
 
-규칙 2개만 지킨다: **`feature`는 `data/remote`를 참조하지 않는다. DTO는 `data/remote/dto` 밖으로
-나가지 않는다.** 이것만 지키면 이후 모듈 분리(§5.5)는 기계적 작업이다.
+규칙 2개만 지킨다:
+
+1. **`feature`·`core/ui`·`core/designsystem`은 `data`를 참조하지 않는다.** ViewModel이 주입받는 것은
+   Repository뿐이다 — `SofaScoreApi`·DAO·`Entity`는 이름조차 나오지 않는다.
+2. **DTO와 Room `Entity`는 `data` 밖으로 나가지 않는다.** 경계를 넘는 타입은 `domain/model`뿐이다.
+
+파생 규칙 두 개가 여기서 나온다 — `core/designsystem`은 `domain`을 모르고(그래서 도메인을 아는
+컴포넌트는 `core/ui`에 있다), `data`는 Compose를 모른다(그래서 한글 팀명 표는 `core/common`에,
+팀 컬러는 `core/designsystem`에 나뉘어 있다). 화면끼리는 서로를 모르고, 이동은 `(Long) -> Unit`
+콜백으로 위에 올려 `DiamondScoreApp.kt`가 `NavKey`로 바꾼다.
+
+이 넷을 지키면 이후 모듈 분리(§5.5)는 기계적 작업이다.
 
 ### 5.2 직렬화와 OkHttp
 
@@ -521,56 +541,87 @@ OkHttpClient.Builder()
 Coil 3는 이 OkHttp 인스턴스를 공유한다(`coil-network-okhttp`). 응답 헤더의 `ETag` / `Cache-Control`
 지원 여부는 `DS-003`에서 확인하고, 지원되면 조건부 요청으로 라이브 폴링 트래픽을 크게 줄인다.
 
-### 5.3 도구 체인 (Kotlin 2.4)
+### 5.3 도구 체인 (Kotlin 2.4 · AGP 9)
 
+- **AGP 9는 Kotlin이 내장이다.** `org.jetbrains.kotlin.android`를 적용하지 않는다(새 DSL과 비호환).
+  `android { kotlinOptions { } }`도 없어졌으니 컴파일러 옵션은 최상위 `kotlin { compilerOptions { } }`.
+  AGP 9.4는 KGP 2.2.10을 동봉하므로 Kotlin 2.4를 쓰려면 루트 `buildscript`에서
+  `classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10")`으로 올린다.
 - Compose 컴파일러는 Kotlin과 함께 배포 → `org.jetbrains.kotlin.plugin.compose`만 적용, 별도 버전 pin 없음.
-- 어노테이션 처리는 전부 **KSP2**(Room·Hilt). kapt는 넣지 않는다.
+- 어노테이션 처리는 전부 **KSP2**(Room·Hilt). kapt는 넣지 않는다. **KSP는 2.3.0부터 `<Kotlin>-<KSP>`
+  접두사를 버린 독립 버전제**다(구 스킴은 `2.2.21-2.0.5`가 마지막). 그래서 `2.4.x-2.0.0` 같은 버전은
+  존재하지 않는다 — `2.3.11`을 쓴다. Hilt는 KSP 2.3.x로 빌드된 **2.60 이상**이어야 짝이 맞는다.
 - 시간 타입은 `java.time`(minSdk 26이라 desugaring 불필요).
 - 릴리스는 **R8 full mode** + resource shrinking. 직렬화 DTO가 난독화로 사라지지 않는지 릴리스 빌드에서 검증.
 
 ### 5.4 스택 버전표
 
-| 항목 | 기준 선택 |
-|---|---|
-| Build | AGP 9.2.x, Gradle 9.4.1, JDK 17 toolchain |
-| SDK | `compileSdk`/`targetSdk` 36, `minSdk` 26 |
-| Language | Kotlin 2.4.x |
-| UI | Jetpack Compose + Material 3, Compose BOM `2026.06.00` |
-| Compose 컴파일러 | `org.jetbrains.kotlin.plugin.compose` (Kotlin 동봉, 별도 버전 pin 없음) |
-| Navigation | Navigation 3 stable `1.0.1` |
-| DI | Hilt (KSP2 처리), AndroidX Hilt 1.4.0 |
-| Annotation 처리 | **KSP2** (Kotlin 2.4 대응), kapt 미사용 |
-| Local | Room 2.8.4 (KSP2), DataStore |
-| Background | WorkManager 2.11.2 |
-| Network | **Retrofit 3.x** + OkHttp + kotlinx.serialization 컨버터 |
-| Images | **Coil 3.x** (`coil-compose` + `coil-network-okhttp`) |
-| Quality | JUnit, kotlinx-coroutines-test, Turbine, MockWebServer, Compose UI Test, screenshot test |
+2026-09-02 기준 stable을 실측(Google Maven / Maven Central / services.gradle.org)해 확정했다.
 
-동적 버전을 금지하고 version catalog에 고정한다. 최초 sync에서 호환성 검증 후 patch만 갱신한다.
-2026-08-31부터 Google Play 신규 앱은 Android 16(API 36) 타깃이 필수이므로 처음부터 API 36 기준.
+| 항목 | 확정 버전 | 비고 |
+|---|---|---|
+| Build | **AGP 9.4.0, Gradle 9.7.1**, JDK 17 | AGP 9.4는 Gradle 9.6.0 이상 필수 |
+| SDK | `compileSdk`/`targetSdk` 36, `minSdk` 26 | Play 신규 앱 요건(2026-08-31 발효)이 API 36. AGP 9.4는 37까지 지원하나 36으로 고정 |
+| Language | **Kotlin 2.4.10** | AGP built-in Kotlin(2.2.10)을 루트 `buildscript`에서 승격 |
+| UI | Compose BOM **2026.08.00** + Material 3 | ui 1.12.0 / material3 1.4.0을 BOM이 관리 |
+| Compose 컴파일러 | `org.jetbrains.kotlin.plugin.compose` | Kotlin 동봉, 별도 버전 pin 없음 |
+| Navigation | **Navigation 3 `1.1.7`** | `navigation3-runtime` + `navigation3-ui`. Nav2(`navigation-compose`)는 쓰지 않는다 |
+| Nav3 보조 | `lifecycle-viewmodel-navigation3` 2.11.0, `adaptive-navigation3` **1.3.0** | 각각 ViewModel 스코핑, 목록-상세 2-pane |
+| DI | **Hilt 2.60.1**(KSP2), `androidx.hilt` 1.4.0 | `hilt-lifecycle-viewmodel-compose`(Nav3용) + `hilt-work` |
+| Annotation 처리 | **KSP 2.3.11**, kapt 미사용 | §5.3의 독립 버전제 주의 |
+| Local | Room **2.8.4**(KSP2), DataStore Preferences 1.2.1 | |
+| Background | WorkManager **2.11.2** | |
+| Network | Retrofit **3.0.0** + OkHttp **5.5.0** + kotlinx.serialization **1.11.0** | 컨버터는 공식 `com.squareup.retrofit2:converter-kotlinx-serialization`(패키지 `retrofit2.converter.kotlinx.serialization`) |
+| Images | Coil **3.6.1** (`coil-compose` + `coil-network-okhttp`) | OkHttp 인스턴스 공유 |
+| Lifecycle | **2.11.0** | `lifecycle-runtime-compose`(`collectAsStateWithLifecycle`) |
+| 기타 AndroidX | core-ktx **1.19.0**, activity-compose **1.13.0** | |
+| Quality | JUnit 4.13.2, kotlinx-coroutines-test 1.11.0, Turbine 1.2.1, MockWebServer 5.5.0, Compose UI Test(BOM), room-testing, hilt-android-testing | |
 
-근거: [Compose BOM](https://developer.android.com/develop/ui/compose/bom) · [Compose 컴파일러](https://developer.android.com/develop/ui/compose/compiler) · [KSP](https://kotlinlang.org/docs/ksp-overview.html) · [Navigation 3](https://developer.android.com/jetpack/androidx/releases/navigation3) · [Room](https://developer.android.com/jetpack/androidx/releases/room) · [AGP 9.2](https://developer.android.com/build/releases/agp-9-2-0-release-notes) · [Retrofit](https://square.github.io/retrofit/) · [Coil](https://coil-kt.github.io/coil/) · [Play target API](https://developer.android.com/google/play/requirements/target-sdk)
+동적 버전을 금지하고 version catalog에 고정한다(Codelabs Step 2가 전체 catalog). 서로 묶인 세 줄은
+**Gradle ≥ 9.6 / KSP 2.3.x / Hilt ≥ 2.60**이며, 하나만 어긋나도 sync 단계에서 깨진다.
+
+근거: [Compose BOM](https://developer.android.com/develop/ui/compose/bom) · [Compose 컴파일러](https://developer.android.com/develop/ui/compose/compiler) · [KSP](https://github.com/google/ksp/releases) · [Navigation 3](https://developer.android.com/guide/navigation/navigation-3) · [Room](https://developer.android.com/jetpack/androidx/releases/room) · [AGP 9.4](https://developer.android.com/build/releases/gradle-plugin) · [built-in Kotlin](https://developer.android.com/build/migrate-to-built-in-kotlin) · [Kotlin별 AGP 요건](https://developer.android.com/build/kotlin-support) · [Retrofit](https://square.github.io/retrofit/) · [Coil](https://coil-kt.github.io/coil/) · [Play target API](https://developer.android.com/google/play/requirements/target-sdk)
 
 ### 5.5 목표 모듈 구조와 적응형 UI
 
-§5.1은 1인 개발용 단일 `:app` 패키지 경계다. 병렬 개발이 시작되면 아래로 승격하되, §5.1의 두 규칙을
-그대로 모듈 경계로 굳힌다.
+§5.1은 1인 개발용 단일 `:app` 패키지 경계다. 병렬 개발이 시작되면 아래로 승격하되, §5.1의 네 규칙을
+그대로 모듈 경계로 굳힌다. **패키지 이름이 곧 모듈 이름이라 승격은 기계적이다.**
 
 ```
-:app  :core:model  :core:common  :core:network  :core:database  :core:designsystem  :core:testing
-:domain(순수 Kotlin)  :data:sports
-:feature:games  :feature:game-detail  :feature:standings  :feature:teams  :feature:favorites  :feature:settings
+:app                       ← Nav3 back stack + entryProvider. 유일하게 모든 feature를 안다
+:domain                    ← 순수 Kotlin. 모델만. 아무것에도 의존하지 않는다
+:core:common               ← 순수 Kotlin. 시간·KBO 팀표·Result
+:core:navigation           ← NavKey 정의. nav3-runtime + serialization만, Compose 없음
+:core:designsystem         ← Compose. 토큰·테마·팀 컬러. :domain을 모른다
+:core:ui                   ← Compose + :domain. 도메인을 아는 공용 컴포넌트
+:core:network :core:database :core:testing
+:data:sports               ← remote + local + repository + sync. DTO·Entity가 여기서 끝난다
+:feature:games :feature:game-detail :feature:standings :feature:teams :feature:favorites :feature:settings
 ```
 
-`:domain`은 Android SDK·Compose·Retrofit·Room에 의존하지 않는 순수 Kotlin 모듈(클린 아키텍처의 안정 핵).
+허용되는 의존 방향은 이것뿐이다:
 
-적응형 UI:
+```
+:app → :feature:* → (:core:ui → :domain), :core:designsystem, :core:navigation, :data:sports(인터페이스 아님, 구현 주입)
+:data:sports → :domain, :core:common, :core:network, :core:database
+:core:designsystem → (Compose만)          # :domain 금지
+:core:common, :domain → (순수 Kotlin)      # Android·Compose 금지
+:core:navigation → nav3-runtime, serialization  # Compose 금지
+```
+
+- `:domain`은 Android SDK·Compose·Retrofit·Room에 의존하지 않는 순수 Kotlin 모듈(클린 아키텍처의 안정 핵).
+- `:feature:*`는 서로를 참조하지 않는다. 화면 간 이동은 `(Long) -> Unit` 콜백으로 `:app`이 받아
+  `NavKey`로 바꾼다.
+- 모델은 `:domain`에만 둔다(`:core:model`을 따로 만들지 않는다 — 모델 소유 모듈이 둘이면 승격이 막힌다).
+
+적응형 UI — Nav3에서는 back stack 하나에 `SceneStrategy`만 얹는다:
 - compact: 단일 pane + bottom navigation
 - medium: 단일/이중 pane + navigation rail
 - expanded: 경기/팀 목록과 상세를 나란히 표시
-- `NavigableListDetailPaneScaffold` 계열로 목록-상세 전환과 predictive back을 일관 처리
+- `adaptive-navigation3`의 `ListDetailSceneStrategy`가 `listPane()`/`detailPane()` 메타데이터를 보고
+  창 크기에 따라 pane을 나눈다. 목적지 정의는 한 벌이고 predictive back도 `NavDisplay`가 처리한다.
 
-근거: [적응형 목록-상세](https://developer.android.com/develop/adaptive-apps/guides/list-detail)
+근거: [적응형 목록-상세](https://developer.android.com/develop/adaptive-apps/guides/list-detail) · [Nav3 어댑티브](https://developer.android.com/guide/navigation/navigation-3/adaptive)
 
 ## 6. 로컬 저장소
 
@@ -669,10 +720,11 @@ class LivePoller<T>(
 
 ### Step 2 — 프로젝트 부트스트랩 (0.5일)
 
-- [ ] `DS-010` Compose 프로젝트, version catalog(§5.4), `compileSdk 36` / `minSdk 26`
-- [ ] `DS-011` Hilt(KSP2), Retrofit 3/OkHttp/kotlinx.serialization, Room(KSP2), Coil 3
-- [ ] `DS-012` Material 3 테마 + **10개 구단 자체 컬러 토큰**(§3.4-5) + 한국어 팀명 리소스(§2.2)
-- [ ] `DS-013` CI: `assembleDebug` + unit test + lint
+- [ ] `DS-010` Compose 프로젝트, version catalog(§5.4), `compileSdk 36` / `minSdk 26`, AGP built-in Kotlin(§5.3)
+- [ ] `DS-011` Hilt(KSP2), Retrofit 3/OkHttp/kotlinx.serialization, Room(KSP2), Coil 3, **Navigation 3**
+- [ ] `DS-012` Material 3 테마 + **10개 구단 자체 컬러 토큰**(§3.4-5) + 한국어 팀명 리소스(§2.2) — 팀명은 `core/common`, 컬러는 `core/designsystem`으로 분리(§5.1)
+- [ ] `DS-013` `core/navigation`에 `NavKey` 7개 정의(`@Serializable`)
+- [ ] `DS-014` CI: `assembleDebug` + unit test + lint
 
 ### Step 3 — 네트워크·매핑 계층 (1.5일)
 
@@ -697,7 +749,7 @@ class LivePoller<T>(
 ### Step 5 — 경기 목록 (1.5일)
 
 - [ ] `DS-040` `GamesViewModel` + `GamesUiState`(날짜, 섹션, freshness, error)
-- [ ] `DS-041` 날짜 네비게이션 + `SavedStateHandle` 보존, "오늘" 버튼
+- [ ] `DS-041` 날짜 네비게이션 + `SavedStateHandle` 보존(읽기만 하지 말고 쓸 것), "오늘" 버튼
 - [ ] `DS-042` 경기 카드 4종 상태, **원정팀 먼저 표시**(§3.4-4)
 - [ ] `DS-043` `LivePoller` + `/events/live` 연동(§7.1)
 - [ ] `DS-044` loading / empty / error / stale UI
@@ -723,10 +775,11 @@ class LivePoller<T>(
 ### Step 8 — 마감 (1.5일)
 
 - [ ] `DS-070` 설정: 테마, 폴링 간격, **데이터 출처 표기(SofaScore)**
-- [ ] `DS-071` 접근성 — TalkBack 순서, 48dp, 200% 글꼴에서 라인스코어 스크롤
-- [ ] `DS-072` 적응형 레이아웃 — compact/medium/expanded 목록-상세
-- [ ] `DS-073` Baseline Profile, 30분 라이브 배터리·메모리 측정
-- [ ] `DS-074` R8 릴리스 빌드 검증
+- [ ] `DS-071` Nav3 연결 — 탭별 back stack 4개, `entryProvider`, decorator 2개(saveable + viewModelStore)
+- [ ] `DS-072` 접근성 — TalkBack 순서, 48dp, 200% 글꼴에서 라인스코어 스크롤
+- [ ] `DS-073` 적응형 레이아웃 — `ListDetailSceneStrategy`로 compact/medium/expanded 목록-상세
+- [ ] `DS-074` Baseline Profile, 30분 라이브 배터리·메모리 측정
+- [ ] `DS-075` R8 릴리스 빌드 검증
 
 **총 예상: 10~11일** (1인). 단 `DS-002`와 Step 5·6 검증이 실제 경기일에 묶이므로 캘린더 기준 2~3주.
 
@@ -748,6 +801,7 @@ class LivePoller<T>(
 | 통합 | 프리페치 페이지 순회, Repository 캐시/오프라인/트랜잭션, Room 마이그레이션 | MockWebServer, Room testing |
 | UI | 화면별 loading/content/empty/error, 라인스코어 연장 렌더링, 원정-홈 표시 순서 | Compose UI Test |
 | 시각 | compact/medium/expanded × light/dark × 글꼴 1.0/2.0 | screenshot test |
+| 경계 | 위 4개 규칙을 import 기준으로 검사 | 승격 후에는 모듈 의존 그래프가 대신 강제한다 |
 | 수동 | 경기일 라이브 검증 | 실기기 |
 
 **경기일 수동 체크리스트** (자동화 불가, 최소 1회)
@@ -756,6 +810,8 @@ class LivePoller<T>(
 - 득점 순간 목록과 상세가 20초 이내에 일치하는가
 - 연장 진입 시 10회 열이 추가되고 득점이 반영되는가
 - 경기 종료 시 폴링이 멈추고 최종 점수가 확정되는가
+- 경기 A 상세 → back → 경기 B 상세에서 A의 점수가 남지 않는가 (Nav3 ViewModel 스코핑)
+- 탭을 옮겼다 돌아왔을 때 그 탭의 back stack과 스크롤 위치가 남아 있는가
 - 백그라운드 10분 후 복귀 시 즉시 갱신되는가
 - 30분 라이브 시청 배터리 소모 5% 이내인가
 
@@ -777,7 +833,11 @@ class LivePoller<T>(
 한 기능은 아래를 모두 만족할 때만 완료다.
 
 - 요구사항과 수용 기준(§1.6)을 충족한다.
-- domain / DTO / entity / UI model 경계를 침범하지 않는다(§5.1의 2개 규칙).
+- §5.1의 경계 규칙 4개를 침범하지 않는다. 리뷰에서 실제로 보는 것:
+  - ViewModel 생성자에 `SofaScoreApi`·DAO·`*Entity`가 없다.
+  - `Dto`·`Entity` 타입 이름이 `data/` 밖 파일에 등장하지 않는다.
+  - `core/designsystem`에 `domain.model` import가 없고, `data/`에 `androidx.compose` import가 없다.
+  - `feature/x`가 `feature/y`를 import하지 않는다.
 - 정상·결측·오류·오프라인 테스트가 있다. §3.4 함정에 걸리는 로직은 독립 테스트로 고정한다.
 - compact와 expanded, light/dark, 200% font에서 검증했다.
 - TalkBack label, focus order, 48dp touch target을 확인했다.

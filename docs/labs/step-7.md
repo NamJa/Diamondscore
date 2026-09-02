@@ -10,20 +10,37 @@ Step 5의 `LineScoreTable`을 화면에 올리고, 목업의 스코어보드·�
 `feature/gamedetail/GameDetailViewModel.kt`:
 
 ```kotlin
-@HiltViewModel
-class GameDetailViewModel @Inject constructor(
+package com.diamondscore.feature.gamedetail
+
+import com.diamondscore.core.navigation.GameDetailKey
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedFactory
+import dagger.assisted.AssistedInject
+import dagger.hilt.android.lifecycle.HiltViewModel
+
+@HiltViewModel(assistedFactory = GameDetailViewModel.Factory::class)
+class GameDetailViewModel @AssistedInject constructor(
     private val repo: GamesRepository,
-    savedState: SavedStateHandle,
+    @Assisted private val key: GameDetailKey,      // ← nav 인자가 타입 그대로 들어온다
 ) : ViewModel() {
-    private val id: Long = checkNotNull(savedState["eventId"])
-    val ui = repo.observeGameDetail(id)
+    val ui = repo.observeGameDetail(key.eventId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    fun refresh() = viewModelScope.launch { runCatching { repo.refreshGame(id) } }
+
+    fun refresh() = viewModelScope.launch { runCatching { repo.refreshGame(key.eventId) } }
+
+    @AssistedFactory
+    interface Factory {
+        fun create(key: GameDetailKey): GameDetailViewModel
+    }
 }
 ```
 
 `observeGameDetail(id)`는 `GameEntity` + `innings` 테이블을 합쳐 `GameDetail`(요약·라인스코어·구장·감독)을
 방출합니다(DAO `@Transaction` 또는 두 Flow `combine`).
+
+<div class="callout warn"><span class="t">Nav3에서 인자를 받는 방법은 이것뿐이다</span>
+Nav2에서는 route 문자열 → <code>Bundle</code> → <code>SavedStateHandle["eventId"]</code>였습니다. Nav3는 <code>GameDetailKey(eventId)</code> <strong>객체</strong>를 back stack에 넣으므로 <code>Bundle</code>을 거치지 않습니다. 그래서 <code>savedState["eventId"]</code>는 <code>null</code>이고, <code>checkNotNull</code>이 터집니다. 대신 <code>@AssistedInject</code>로 키를 주입하면 <code>Long</code> 파싱도, <code>NavType</code>도, 키 이름 오타도 없습니다 — 타입이 맞지 않으면 컴파일이 안 됩니다.
+</div>
 
 ## 2. 스코어보드 (ScoreHeader)
 
@@ -76,7 +93,11 @@ private fun TeamScoreRow(t: TeamRef, runs: Int?, side: String, win: Boolean) {
 
 ```kotlin
 @Composable
-fun GameDetailScreen(vm: GameDetailViewModel = hiltViewModel(), onBack: () -> Unit) {
+fun GameDetailScreen(key: GameDetailKey, onBack: () -> Unit) {
+    // hiltViewModel의 assisted 오버로드. import는 androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+    val vm = hiltViewModel<GameDetailViewModel, GameDetailViewModel.Factory>(
+        creationCallback = { factory -> factory.create(key) },
+    )
     val d by vm.ui.collectAsStateWithLifecycle()
     Scaffold(topBar = { DetailTopBar(onBack, favorite = false) }) { pad ->
         d?.let { detail ->
@@ -95,6 +116,10 @@ fun GameDetailScreen(vm: GameDetailViewModel = hiltViewModel(), onBack: () -> Un
     }
 }
 ```
+
+<div class="callout tip"><span class="t">키는 넘기고, ViewModel은 화면이 만든다</span>
+<code>GameDetailScreen</code>이 <code>vm</code>을 파라미터로 받지 않고 키를 받습니다. 그러면 Step 9의 <code>entryProvider</code>가 <code>entry&lt;GameDetailKey&gt; { key -> GameDetailScreen(key, ...) }</code> 한 줄로 끝납니다. 인스턴스마다 새 ViewModel이 필요한데, 그건 Step 9에서 넣는 <code>rememberViewModelStoreNavEntryDecorator()</code>가 <code>NavEntry.contentKey</code> 기준으로 처리해 줍니다 — <code>key</code> 문자열을 직접 만들 필요가 없습니다.
+</div>
 
 ### 상세 화면 조각 (완전한 코드)
 

@@ -114,9 +114,11 @@ abstract class DiamondScoreDatabase : RoomDatabase() {
 }
 ```
 
-`di/DatabaseModule.kt`:
+`data/local/di/DatabaseModule.kt`:
 
 ```kotlin
+package com.diamondscore.data.local.di
+
 @Module @InstallIn(SingletonComponent::class)
 object DatabaseModule {
     @Provides @Singleton fun db(@ApplicationContext ctx: Context) =
@@ -142,6 +144,9 @@ class GamesRepository @Inject constructor(
 ) {
     fun observeByDate(date: LocalDate): Flow<List<GameSummary>> =
         dao.observeByDate(date.toString()).map { it.map(GameEntity::toSummary) }
+
+    /** 현재 시즌 id. 하드코딩 금지 — /seasons 첫 항목. 이 앱에서 `SofaScoreApi`를 아는 곳은 data 레이어뿐이다. */
+    suspend fun currentSeasonId(): Long = api.seasons().seasons.first().id
 
     /** 시즌 전체를 next/last 페이지로 순회해 Room에 upsert. 빈 배열까지, 최대 60페이지. */
     suspend fun prefetchSeason(seasonId: Long) {
@@ -199,6 +204,8 @@ data class DetailMeta(val venueName: String?, val capacity: Int?, val season: St
 ### 엔티티 ↔ 도메인 매퍼
 
 `data/local/mapper/EntityMappers.kt` — Repository가 Room 행을 도메인으로, 도메인을 행으로 바꿉니다.
+`teamNameKo`는 Step 2에서 `core/common`에 둔 순수 Kotlin 함수입니다(`core/designsystem`이 아닙니다 —
+data 레이어는 Compose를 모릅니다).
 
 ```kotlin
 fun GameEntity.toSummary() = GameSummary(
@@ -234,11 +241,10 @@ fun GameSummary.toEntity() = GameEntity(
 @HiltWorker
 class PrefetchWorker @AssistedInject constructor(
     @Assisted ctx: Context, @Assisted params: WorkerParameters,
-    private val api: SofaScoreApi, private val repo: GamesRepository,
+    private val repo: GamesRepository,
 ) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result = try {
-        val seasonId = api.seasons().seasons.first().id     // 하드코딩 금지: 첫 항목
-        repo.prefetchSeason(seasonId)
+        repo.prefetchSeason(repo.currentSeasonId())
         Result.success()
     } catch (e: Exception) { Result.retry() }
 }

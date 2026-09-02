@@ -23,21 +23,33 @@ data class GamesUiState(
 @HiltViewModel
 class GamesViewModel @Inject constructor(
     private val repo: GamesRepository,
-    savedState: SavedStateHandle,
+    private val savedState: SavedStateHandle,
 ) : ViewModel() {
+    // 선택 날짜는 nav 인자가 아니라 화면 상태다 → SavedStateHandle로 프로세스 재생성까지만 보존
     private val date = MutableStateFlow(
-        savedState.get<String>("date")?.let(LocalDate::parse) ?: LocalDate.now(SEOUL))
+        savedState.get<String>(KEY_DATE)?.let(LocalDate::parse) ?: LocalDate.now(SEOUL))
 
     val ui: StateFlow<GamesUiState> = date
         .flatMapLatest { d -> repo.observeByDate(d).map { d to it } }
         .map { (d, games) -> GamesUiState(date = d, games = games, loading = false) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GamesUiState())
 
-    fun move(days: Long) { date.update { it.plusDays(days) } }
-    fun today() { date.value = LocalDate.now(SEOUL) }
+    fun move(days: Long) = setDate(date.value.plusDays(days))
+    fun today() = setDate(LocalDate.now(SEOUL))
     fun refreshLive() = viewModelScope.launch { runCatching { repo.refreshLive() } }
+
+    private fun setDate(d: LocalDate) {
+        date.value = d
+        savedState[KEY_DATE] = d.toString()      // 읽기만 하고 안 쓰면 보존이 안 된다
+    }
+
+    private companion object { const val KEY_DATE = "date" }
 }
 ```
+
+<div class="callout tip"><span class="t">Navigation 3에서 인자는 <code>SavedStateHandle</code>로 오지 않는다</span>
+경기 목록은 탭 루트라 인자가 없습니다. 하지만 인자가 있는 화면(Step 7·8)은 다릅니다 — Nav3는 <code>Bundle</code>이 아니라 <strong>타입 있는 키 객체</strong>를 넘기므로 <code>savedState["eventId"]</code> 같은 코드는 <code>null</code>을 받습니다. 인자는 <code>@AssistedInject</code>로 키를 직접 주입해서 받습니다(Step 7). <code>SavedStateHandle</code>은 위처럼 <strong>화면이 스스로 만든 상태</strong>를 프로세스 재생성까지 살리는 용도로만 남습니다.
+</div>
 
 ## 2. 날짜 바 (DateBar)
 
@@ -70,7 +82,8 @@ fun DateBar(date: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onToday: ()
 
 ```kotlin
 @Composable
-fun GamesScreen(vm: GamesViewModel = hiltViewModel(), onGame: (Long) -> Unit) {
+fun GamesScreen(onGame: (Long) -> Unit) {
+    val vm: GamesViewModel = hiltViewModel()   // androidx.hilt.lifecycle.viewmodel.compose
     val ui by vm.ui.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar(title = "경기", subtitle = "KBO 2026")
@@ -112,7 +125,7 @@ fun sectioned(games: List<GameSummary>): List<Pair<String, List<GameSummary>>> =
 `key = { it.id }`로 안정적인 key를 주는 것을 잊지 마세요(recomposition 최소화).
 
 <div class="callout tip"><span class="t">Scaffold + BottomBar</span>
-탭 전환은 최상위 <code>Scaffold(bottomBar = { DsBottomBar(...) })</code>에서 처리하고, <code>GamesScreen</code>은 그 안에 놓습니다. Navigation은 Step 9에서 4탭을 연결합니다.
+탭 전환은 최상위 <code>Scaffold(bottomBar = { DsBottomBar(...) })</code>에서 처리하고, <code>GamesScreen</code>은 그 안에 놓습니다. 탭별 back stack과 <code>NavDisplay</code> 연결은 Step 9입니다.
 </div>
 
 ## 4. 라이브 폴링 — 화면이 보일 때만

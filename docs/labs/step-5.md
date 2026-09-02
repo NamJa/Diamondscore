@@ -10,9 +10,13 @@
 화면 Step이 "조립"만 남습니다. Preview로 4가지 상태를 한 파일에서 검증할 수 있어 빠릅니다.
 </div>
 
-모든 컴포넌트는 `com.diamondscore.core.designsystem` 패키지에 두고, Step 2의 `DsColors`·`teamColor`·
+모든 컴포넌트는 `com.diamondscore.core.ui` 패키지에 두고, Step 2의 `DsColors`·`teamColor`·
 `teamShort`·`ScoreNumber`·**`Display`(Bebas)**와 Step 3의 도메인 모델(`GameSummary`·`GameStatus`·
 `InningRuns`·`Standing`)을 씁니다.
+
+<div class="callout tip"><span class="t">왜 <code>core/designsystem</code>이 아니라 <code>core/ui</code>인가</span>
+<code>core/designsystem</code>은 <strong>도메인을 모르는</strong> 토큰·프리미티브만 둡니다(색·타이포·테마·<code>teamColor</code>). 여기 만드는 컴포넌트들은 <code>GameSummary</code>·<code>Standing</code>을 파라미터로 받으니 도메인을 압니다 — 그래서 한 칸 위인 <code>core/ui</code>에 둡니다. 화면(<code>feature/*</code>)에 종속되지 않아 재사용되고, 나중에 모듈을 쪼갤 때 <code>:core:ui</code>가 <code>:domain</code>에 의존하는 건 정상이지만 <code>:core:designsystem</code>이 그러면 안 됩니다.
+</div>
 
 <div class="callout tip"><span class="t">브로드캐스트 × 에디토리얼 원칙</span>
 <strong>라이브</strong>는 A(브로드캐스트) — 레드 그라디언트 보더 히어로 + 초대형 Bebas 스코어 + VS.
@@ -29,7 +33,7 @@
 
 목업의 4개 목적지 — 경기 · 순위 · 팀 · 즐겨찾기.
 
-`components/DsBottomBar.kt`:
+`core/ui/DsBottomBar.kt`:
 
 ```kotlin
 enum class DsTab(val label: String) { GAMES("경기"), STANDINGS("순위"), TEAMS("팀"), FAVORITES("즐겨찾기") }
@@ -64,7 +68,7 @@ fun DsBottomBar(current: DsTab, onSelect: (DsTab) -> Unit) {
 
 **라이브는 히어로 카드, 나머지는 라인 로우**로 분기합니다. **원정팀을 먼저** 둡니다.
 
-`components/GameCard.kt`:
+`core/ui/GameCard.kt`:
 
 ```kotlin
 @Composable
@@ -189,7 +193,7 @@ private fun GameCardPreview() = DiamondScoreTheme {
 
 이닝 수가 경기마다 다르고 연장이 붙습니다. **데이터에 있는 만큼만** 열을 그리고 최소 9열을 보장합니다.
 
-`components/LineScoreTable.kt`:
+`core/ui/LineScoreTable.kt`:
 
 ```kotlin
 @Composable
@@ -257,7 +261,7 @@ fun TotalCell(v: Int?, width: Dp = 34.dp) =
 에디토리얼 라인 로우: **Bebas 순위 숫자** + 팀컬러 닷 + **승·패·무**·승률·게임차. 5위 뒤에 진출선.
 (경기 수 컬럼은 목업에서 뺐습니다 — 승·패·무 합으로 알 수 있음)
 
-`components/StandingRow.kt`:
+`core/ui/StandingRow.kt`:
 
 ```kotlin
 @Composable
@@ -299,7 +303,7 @@ fun PlayoffDivider() = Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, v
 
 목업의 4가지 상태를 재사용 컴포넌트로. 모든 화면이 이 넷으로 로딩/빈/오류/stale을 표현합니다.
 
-`components/States.kt`:
+`core/ui/States.kt`:
 
 ```kotlin
 @Composable
@@ -347,7 +351,7 @@ fun StaleBanner(lastUpdatedText: String) = Row(
 
 ## 6. 공용 UI 헬퍼
 
-여러 화면·컴포넌트가 함께 쓰는 작은 조각들. `core/designsystem/DsHelpers.kt`:
+여러 화면·컴포넌트가 함께 쓰는 작은 조각들. `core/ui/DsHelpers.kt`:
 
 ```kotlin
 @Composable

@@ -156,13 +156,13 @@ interface SofaScoreApi {
 }
 ```
 
-`di/NetworkModule.kt` — OkHttp + Retrofit 3 + kotlinx.serialization:
+`data/remote/di/NetworkModule.kt` — OkHttp + Retrofit 3 + kotlinx.serialization:
 
 ```kotlin
-package com.diamondscore.di
+package com.diamondscore.data.remote.di
 
 import com.diamondscore.data.remote.SofaScoreApi
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module; import dagger.Provides
 import dagger.hilt.InstallIn; import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
@@ -196,8 +196,12 @@ object NetworkModule {
 }
 ```
 
-<div class="callout tip"><span class="t">Retrofit 3 컨버터</span>
-Retrofit 3는 <code>suspend</code> 함수와 kotlinx.serialization 컨버터를 정식 지원합니다. Gson/Moshi를 추가하지 마세요.
+<div class="callout tip"><span class="t">Hilt 모듈은 최상위 <code>di/</code>에 모으지 않는다</span>
+<code>NetworkModule</code>은 <code>data/remote/</code> 안에, <code>DatabaseModule</code>(Step 4)은 <code>data/local/</code> 안에 둡니다. 최상위 <code>di/</code> 한 패키지에 둘을 모으면 Retrofit과 Room을 동시에 아는 패키지가 생겨, 나중에 <code>:core:network</code>·<code>:core:database</code>로 쪼갤 때 유일하게 손으로 뜯어야 하는 지점이 됩니다.
+</div>
+
+<div class="callout tip"><span class="t">Retrofit 3 컨버터 — 패키지를 헷갈리지 마세요</span>
+공식 컨버터는 <code>com.squareup.retrofit2:converter-kotlinx-serialization</code>이고 패키지는 <code>retrofit2.converter.kotlinx.serialization</code>입니다. 검색하면 Retrofit 2 시절의 서드파티 <code>com.jakewharton.retrofit2...</code>가 먼저 나오는데, 그건 위 catalog가 넣은 아티팩트가 아니라 컴파일되지 않습니다. Gson/Moshi도 추가하지 마세요.
 </div>
 
 ## 4. 매퍼 — 함정을 여기서 흡수
@@ -209,7 +213,7 @@ package com.diamondscore.data.remote.mapper
 
 import com.diamondscore.data.remote.dto.*
 import com.diamondscore.domain.model.*
-import com.diamondscore.core.designsystem.teamNameKo
+import com.diamondscore.core.common.teamNameKo
 import com.diamondscore.core.common.SEOUL
 import java.time.Instant
 

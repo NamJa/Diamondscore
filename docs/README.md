@@ -6,7 +6,7 @@
 > 명령어·코드·확인 방법을 그대로 적어 두었으니, 순서대로 복사·실행하면 동작하는 앱이 됩니다.
 
 **만드는 것**: 오늘 경기 목록 · 라이브 스코어 · 이닝별 라인스코어 · 리그 순위 · 팀 상세 · 즐겨찾기.
-**스택**: Kotlin 2.4 · Jetpack Compose · Retrofit 3 · Coil 3 · Room · Hilt · KSP2.
+**스택**: Kotlin 2.4 · AGP 9.4 · Jetpack Compose · **Navigation 3** · Retrofit 3 · Coil 3 · Room · Hilt · KSP2.
 **데이터**: SofaScore 공개 엔드포인트(개인 용도, 백엔드 없음).
 **디자인**: **브로드캐스트 × 에디토리얼** 하이브리드(다크 기본 + 라이트) · Bebas Neue + Archivo/Noto Sans KR · 10개 구단 컬러. 라이브는 초대형 스코어로 강렬하게, 목록·표는 라인·여백으로 절제. 각 화면은 확정된 목업을 그대로 구현합니다 — Step 5에서 공통 컴포넌트를 먼저 만들고, Step 6~8에서 조립합니다.
 

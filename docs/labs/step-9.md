@@ -4,48 +4,144 @@
 
 기능을 마무리합니다. 목업의 설정 화면을 만들고, 4탭을 연결하고, 태블릿 2-pane까지 붙인 뒤 릴리스 빌드를 확인합니다.
 
-## 1. 4탭 연결 (Navigation)
+## 1. 4탭 연결 (Navigation 3)
 
-`Scaffold(bottomBar = { DsBottomBar(...) })` 아래에 4개 목적지를 놓습니다(Navigation 3 또는
-Navigation-Compose). 상세·팀 상세는 탭 위로 push되고, 각 탭은 자기 back stack을 보존합니다.
+Navigation 3는 **back stack이 그냥 관찰 가능한 리스트**입니다. `NavController`도, route 문자열도,
+`NavGraph`도 없습니다 — 키를 `add`하면 앞으로 가고 `removeLastOrNull()`하면 뒤로 갑니다. 화면 목록은
+`entryProvider`가 키 → Composable로 매핑합니다.
+
+키는 Step 2의 `core/navigation/DsNavKeys.kt`에 이미 있습니다. 탭 4개는 각자 back stack을 갖습니다.
+
+`app/src/main/java/com/diamondscore/DiamondScoreApp.kt`:
 
 ```kotlin
+package com.diamondscore
+
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberDecoratedNavEntries
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
+import com.diamondscore.core.navigation.*
+
+private val DsTab.root: NavKey
+    get() = when (this) {
+        DsTab.GAMES -> GamesKey
+        DsTab.STANDINGS -> StandingsKey
+        DsTab.TEAMS -> TeamsKey
+        DsTab.FAVORITES -> FavoritesKey
+    }
+
+/**
+ * 키 → 화면. `stack`을 인자로 받는 게 핵심이다 — 탭마다 back stack이 다르므로
+ * 각 탭의 화면은 자기 stack에 push해야 한다.
+ */
+private fun dsEntryProvider(stack: NavBackStack<NavKey>): (NavKey) -> NavEntry<NavKey> =
+    entryProvider {
+        entry<GamesKey> {
+            GamesScreen(onGame = { id -> stack.add(GameDetailKey(id)) })
+        }
+        entry<StandingsKey> {
+            StandingsScreen(onTeam = { id -> stack.add(TeamDetailKey(id)) })
+        }
+        entry<TeamsKey> {
+            TeamsScreen(onTeam = { id -> stack.add(TeamDetailKey(id)) })
+        }
+        entry<FavoritesKey> {
+            FavoritesScreen(
+                onTeam = { id -> stack.add(TeamDetailKey(id)) },
+                onSettings = { stack.add(SettingsKey) },
+            )
+        }
+        entry<GameDetailKey> { key ->
+            GameDetailScreen(key, onBack = { stack.removeLastOrNull() })
+        }
+        entry<TeamDetailKey> { key ->
+            TeamDetailScreen(
+                key,
+                onGame = { id -> stack.add(GameDetailKey(id)) },
+                onBack = { stack.removeLastOrNull() },
+            )
+        }
+        entry<SettingsKey> {
+            SettingsScreen(onBack = { stack.removeLastOrNull() })
+        }
+    }
+
 @Composable
 fun DiamondScoreApp() {
     var tab by rememberSaveable { mutableStateOf(DsTab.GAMES) }
+
+    // 탭마다 back stack 하나. rememberNavBackStack이 직렬화해 프로세스 재생성까지 살린다.
+    val backStacks = DsTab.entries.associateWith { rememberNavBackStack(it.root) }
+    val current = backStacks.getValue(tab)
+
+    // 4개 stack 전부를 매 컴포지션에서 decorate → 안 보이는 탭의 ViewModel·스크롤 위치도 살아 있다.
+    val decorated = backStacks.mapValues { (_, stack) ->
+        rememberDecoratedNavEntries(
+            backStack = stack,
+            entryDecorators = listOf(
+                rememberSaveableStateHolderNavEntryDecorator(),
+                rememberViewModelStoreNavEntryDecorator(),
+            ),
+            entryProvider = dsEntryProvider(stack),
+        )
+    }
+
     Scaffold(bottomBar = { DsBottomBar(tab) { tab = it } }) { pad ->
-        Box(Modifier.padding(pad)) {
-            when (tab) {
-                DsTab.GAMES -> GamesGraph()
-                DsTab.STANDINGS -> StandingsGraph()
-                DsTab.TEAMS -> TeamsGraph()
-                DsTab.FAVORITES -> FavoritesScreen()
-            }
-        }
+        NavDisplay(
+            entries = decorated.getValue(tab),
+            onBack = { current.removeLastOrNull() },
+            modifier = Modifier.padding(pad),
+        )
     }
 }
 ```
 
-각 탭 그래프는 목록 → 상세로 이어지는 작은 `NavHost`입니다. 예로 경기 탭:
+<div class="callout danger"><span class="t">여기서 한 번은 틀립니다 — <code>entryProvider</code>는 stack별로 만든다</span>
+<code>entryProvider</code>를 <code>DiamondScoreApp</code> 안에서 한 번만 만들고 "현재 탭 stack"을 클로저로 잡으면 조용히 깨집니다. <code>rememberDecoratedNavEntries</code>는 <strong>back stack 내용이 바뀔 때만</strong> 엔트리를 다시 만들기 때문에, 첫 컴포지션(경기 탭)에서 만들어진 순위·팀·즐겨찾기 엔트리가 <strong>경기 탭 stack</strong>을 잡은 채 남습니다. 그 상태로 순위 탭에서 팀을 누르면 팀 상세가 경기 탭에 쌓입니다. 위처럼 <code>stack</code>을 <strong>인자로 받는 함수</strong>로 만들면 애초에 잡을 수가 없습니다.
+</div>
+
+`MainActivity`는 `setContent { DiamondScoreTheme { DiamondScoreApp() } }`이고, `@AndroidEntryPoint`가
+붙어 있어야 `hiltViewModel()`이 동작합니다.
+
+<div class="callout warn"><span class="t">decorator 2개는 옵션이 아니다</span>
+<code>NavDisplay</code>의 기본값은 <code>rememberSaveableStateHolderNavEntryDecorator()</code> 하나뿐입니다. 여기에 <strong><code>rememberViewModelStoreNavEntryDecorator()</code></strong>를 직접 추가해야:
+<ul>
+<li>화면마다(정확히는 <code>NavEntry.contentKey</code>마다) <strong>별개의 ViewModel</strong>이 생깁니다 — 경기 A 상세와 경기 B 상세가 ViewModel을 공유하지 않습니다.</li>
+<li>back으로 pop되면 그 ViewModel이 <code>onCleared()</code>됩니다.</li>
+</ul>
+빼먹으면 <code>GameDetailViewModel</code> 하나가 재사용돼 다른 경기를 눌러도 이전 점수가 보입니다. 직접 목록을 넘길 때는 기본값도 함께 넣어야 한다는 점을 잊지 마세요.
+</div>
+
+<div class="callout tip"><span class="t">화면은 키를 모른 채로도 된다</span>
+<code>GamesScreen(onGame = (Long) -&gt; Unit)</code>처럼 화면은 <strong>콜백</strong>만 노출하고, 콜백을 어떤 키로 바꿀지는 이 파일(<code>:app</code>)이 정합니다. 그래서 <code>feature:games</code>가 <code>feature:game-detail</code>을 몰라도 되고, 나중에 모듈을 쪼갤 때 feature끼리 의존이 생기지 않습니다. 인자를 받는 화면만 키 타입을 파라미터로 받습니다(Step 7·8).
+</div>
+
+<div class="callout tip"><span class="t">Nav2에서 옮겨온다면</span>
+<code>NavHost</code>·<code>NavController</code>·<code>composable("game/{eventId}")</code>·<code>navArgument</code>·<code>NavType.LongType</code>·<code>popBackStack()</code>이 전부 사라집니다. 대응은 <code>NavDisplay</code>·<code>NavBackStack</code>(그냥 리스트)·<code>entry&lt;GameDetailKey&gt;</code>·<code>removeLastOrNull()</code>입니다. <code>androidx.navigation:navigation-compose</code> 의존성도 넣지 않습니다 — 예전에는 <code>hilt-navigation-compose</code>가 이걸 transitive로 끌어왔는데, 우리는 <code>hilt-lifecycle-viewmodel-compose</code>를 쓰므로 그 경로도 없습니다.
+</div>
+
+### 뒤로 가기 — 그대로 두면 맞다
+
+`NavDisplay`는 back stack에 항목이 2개 이상일 때만 back을 가로챕니다(내부적으로
+`isBackEnabled = scene.previousEntries.isNotEmpty()`). 탭 루트에서는 back을 시스템에 넘기므로
+`onBack`이 아예 호출되지 않고, 앱이 정상 종료됩니다 — **빈 back stack을 방어하는 코드가 필요 없습니다.**
+predictive back(뒤로 밀기 미리보기)도 `NavDisplay`가 기본으로 붙여 줍니다.
+
+바꾸고 싶은 건 하나뿐입니다: 순위 탭 루트에서 back을 누르면 경기 탭으로 돌아가는 "홈으로 나간다"
+패턴을 원한다면 `onBack`이 아니라 **탭 상태**를 다뤄야 합니다.
 
 ```kotlin
-@Composable
-fun GamesGraph() {
-    val nav = rememberNavController()
-    NavHost(nav, startDestination = "list") {
-        composable("list") { GamesScreen(onGame = { nav.navigate("game/$it") }) }
-        composable("game/{eventId}",
-            arguments = listOf(navArgument("eventId") { type = NavType.LongType })) {
-            GameDetailScreen(onBack = { nav.popBackStack() })
-        }
-    }
-}
-// StandingsGraph(순위→팀 상세)·TeamsGraph(팀 목록→팀 상세)도 같은 모양. 각 탭이 자기 NavController로 back stack 보존.
+// 선택 사항. 원하지 않으면 이 블록을 넣지 마세요 — 기본 동작(앱 종료)도 정상입니다.
+BackHandler(enabled = current.size == 1 && tab != DsTab.GAMES) { tab = DsTab.GAMES }
 ```
-
-<div class="callout tip"><span class="t">eventId/teamId 전달</span>
-<code>ViewModel</code>은 <code>SavedStateHandle["eventId"]</code>로 인자를 받습니다(Step 7·8). Navigation 3를 쓴다면 type-safe 키로 같은 그래프를 구성하세요.
-</div>
 
 ## 2. 설정 화면
 
@@ -55,24 +151,30 @@ fun GamesGraph() {
 
 ```kotlin
 @Composable
-fun SettingsScreen(vm: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onBack: () -> Unit) {
+    val vm: SettingsViewModel = hiltViewModel()
     val s by vm.ui.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(26.dp)) {
-        SettingGroup("테마") {
-            DsSegmented(listOf("시스템","라이트","다크"), selected = s.theme, onSelect = vm::setTheme)
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { DsIcon(Icons.AutoMirrored.Outlined.ArrowBack) }
+            TopBar("설정")
         }
-        SettingGroup("라이브 갱신 간격") {
-            DsSegmented(listOf("20초","30초","1분"), selected = s.interval, onSelect = vm::setInterval)
-            Caption("화면을 보고 있을 때만 갱신돼요. 홈으로 나가면 멈춥니다.")
-        }
-        SettingGroup("알림") {
-            SettingSwitch("경기 시작·득점 알림", checked = false, enabled = false, hint = "준비 중")
-        }
-        SettingGroup("정보") {
-            SettingRow("데이터 출처", "SofaScore · 개인 용도")
-            SettingLink("개인정보 처리방침"); SettingLink("오픈소스 라이선스")
-            SettingRow("앱 버전", "0.1.0")
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(26.dp)) {
+            SettingGroup("테마") {
+                DsSegmented(listOf("시스템","라이트","다크"), selected = s.theme, onSelect = vm::setTheme)
+            }
+            SettingGroup("라이브 갱신 간격") {
+                DsSegmented(listOf("20초","30초","1분"), selected = s.interval, onSelect = vm::setInterval)
+                Caption("화면을 보고 있을 때만 갱신돼요. 홈으로 나가면 멈춥니다.")
+            }
+            SettingGroup("알림") {
+                SettingSwitch("경기 시작·득점 알림", checked = false, enabled = false, hint = "준비 중")
+            }
+            SettingGroup("정보") {
+                SettingRow("데이터 출처", "SofaScore · 개인 용도")
+                SettingLink("개인정보 처리방침"); SettingLink("오픈소스 라이선스")
+                SettingRow("앱 버전", "0.1.0")
+            }
         }
     }
 }
@@ -154,21 +256,74 @@ Step 5에서 만든 `LoadingCards`·`EmptyDay`·`ErrorState`·`StaleBanner`가 �
 
 ## 4. 적응형 — 태블릿 2-pane
 
-목업의 태블릿 화면: 네비 레일 + 목록 pane + 상세 pane. `NavigableListDetailPaneScaffold`로 구현합니다.
+목업의 태블릿 화면: 목록 pane + 상세 pane. Nav3에서는 **화면을 다시 만들지 않습니다** — §1에서 만든
+back stack 그대로 두고 `SceneStrategy`만 하나 끼웁니다. 창이 넓으면 두 pane, 좁으면 한 pane으로
+`NavDisplay`가 알아서 갈라 놓습니다.
+
+`nav3-adaptive`(`androidx.compose.material3.adaptive:adaptive-navigation3`)가 필요합니다.
 
 ```kotlin
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
+import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
+```
+
+1. **어느 키가 어느 pane인지** `entry`의 `metadata`로 표시합니다 — §1의 `dsEntryProvider`에 인자만 추가:
+
+```kotlin
+private fun dsEntryProvider(stack: NavBackStack<NavKey>): (NavKey) -> NavEntry<NavKey> =
+    entryProvider {
+        entry<GamesKey>(
+            metadata = ListDetailSceneStrategy.listPane(
+                detailPlaceholder = { EmptyDetail("경기를 선택하세요") },   // 넓은 화면에서 오른쪽 pane
+            )
+        ) {
+            GamesScreen(onGame = { id -> stack.add(GameDetailKey(id)) })
+        }
+        entry<GameDetailKey>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
+            GameDetailScreen(key, onBack = { stack.removeLastOrNull() })
+        }
+
+        // 순위·팀 → 팀 상세도 같은 방식
+        entry<StandingsKey>(metadata = ListDetailSceneStrategy.listPane()) { … }
+        entry<TeamsKey>(metadata = ListDetailSceneStrategy.listPane()) { … }
+        entry<TeamDetailKey>(metadata = ListDetailSceneStrategy.detailPane()) { key -> … }
+
+        // 설정·즐겨찾기는 pane 분할이 없으니 metadata 없이 그대로
+        entry<FavoritesKey> { … }
+        entry<SettingsKey> { … }
+    }
+```
+
+2. **전략을 `NavDisplay`에 넘깁니다.** §1의 `DiamondScoreApp`에서 두 줄만 바뀝니다:
+
+```kotlin
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-fun GamesListDetailPane() {
-    val nav = rememberListDetailPaneScaffoldNavigator<Long>()
-    NavigableListDetailPaneScaffold(
-        navigator = nav,
-        listPane = { GamesScreen(onGame = { nav.navigateTo(ListDetailPaneScaffoldRole.Detail, it) }) },
-        detailPane = { nav.currentDestination?.contentKey?.let { GameDetailScreen(eventId = it) } },
-    )
+fun DiamondScoreApp() {
+    // … tab / backStacks / current / decorated 는 §1과 동일 …
+    val listDetail = rememberListDetailSceneStrategy<NavKey>()   // ← 추가
+
+    Scaffold(bottomBar = { DsBottomBar(tab) { tab = it } }) { pad ->
+        NavDisplay(
+            entries = decorated.getValue(tab),
+            onBack = { current.removeLastOrNull() },
+            sceneStrategy = listDetail,          // ← 이 한 줄이 2-pane 전부
+            modifier = Modifier.padding(pad),
+        )
+    }
 }
 ```
 
-<div class="checkpoint"><span class="t"></span> compact(폰)은 하단 네비 + 단일 화면, expanded(태블릿)는 목업처럼 왼쪽 목록·오른쪽 상세가 나란히 뜨면 성공.</div>
+<div class="callout tip"><span class="t"><code>sceneStrategy</code>는 단수</span>
+<code>entries = …</code> 오버로드는 <code>sceneStrategy</code>(단수) 하나만 받습니다. 전략을 여러 개 겹치려면(예: 목록-상세 + 바텀시트) <code>backStack = …</code> 오버로드의 <code>sceneStrategies</code>(복수)를 써야 하는데, 그러면 탭별 back stack을 직접 decorate할 수 없습니다. 이 앱은 전략이 하나라 단수로 충분합니다.
+</div>
+
+<div class="callout tip"><span class="t">왜 코드가 이것뿐인가</span>
+Nav2의 <code>NavigableListDetailPaneScaffold</code>는 별도 navigator와 별도 화면 트리를 요구해서, 폰용 그래프와 태블릿용 그래프가 사실상 두 벌이 됐습니다. Nav3의 <code>SceneStrategy</code>는 <strong>같은 back stack</strong>을 보고 "이 항목들을 한 화면에 같이 그릴 수 있나?"만 판단합니다. 그래서 목적지 정의는 한 벌이고, pane 배치·predictive back·창 크기 대응은 전략이 담당합니다.
+</div>
+
+<div class="checkpoint"><span class="t"></span> compact(폰)은 하단 네비 + 단일 화면, expanded(태블릿)는 목업처럼 왼쪽 목록·오른쪽 상세가 나란히 뜨면 성공. 태블릿에서 경기를 고르지 않은 상태에서 <code>detailPlaceholder</code>가 보이는지도 확인하세요.</div>
 
 ## 5. 접근성
 
