@@ -196,6 +196,10 @@ object NetworkModule {
 }
 ```
 
+<div class="callout warn"><span class="t">첫 호출이 곧 <code>DS-001</code> — 403이면 여기서 멈춘다</span>
+이 <code>OkHttpClient</code>로 <code>/unique-tournament/11204/seasons</code>가 실기기에서 200이 나오는지가 계획서 <code>DS-001</code>입니다. SofaScore는 TLS 핑거프린트로 curl 계열을 막지만 OkHttp는 통과합니다(계획서 §13 A-3). 위 <code>User-Agent</code>는 인증이 아니라 식별용이라 값은 자유이고, Cronet·토큰·서명 같은 추가 SDK는 필요 없습니다. Android(Conscrypt)에서도 403이면 우회하지 말고 계획서 §1.2 보조 소스로 방향을 바꿉니다.
+</div>
+
 <div class="callout tip"><span class="t">Hilt 모듈은 최상위 <code>di/</code>에 모으지 않는다</span>
 <code>NetworkModule</code>은 <code>data/remote/</code> 안에, <code>DatabaseModule</code>(Step 4)은 <code>data/local/</code> 안에 둡니다. 최상위 <code>di/</code> 한 패키지에 둘을 모으면 Retrofit과 Room을 동시에 아는 패키지가 생겨, 나중에 <code>:core:network</code>·<code>:core:database</code>로 쪼갤 때 유일하게 손으로 뜯어야 하는 지점이 됩니다.
 </div>
