@@ -11,3 +11,8 @@ docs/extract-endpoints.py
 
 # claude design 작업 파일 (Pages 무관)
 design/
+
+# wisetoto(프로야구 LIVE) API 분석 문서 — 공개 저장소에서 제외
+docs/wisetoto-*
+baseball-apk/
+baseball-decompiled/

@@ -35,9 +35,9 @@ Kotlin 2.4.10 · Jetpack Compose (Material 3) · 클린 아키텍처(단일 `:ap
 
 ## 데이터 소스
 
-SofaScore API (`api.sofascore.com/api/v1`), KBO `uniqueTournament.id = 11204`, 2026 `seasonId = 88022`.
+wisetoto API (`bsrest.wisetoto.com`, Google Play "프로야구 LIVE" 앱의 백엔드), KBO `league_info_seq = 39`, 시즌은 연도(`year=2026`).
 
-2026-08-02 실측 기준으로 일정·이닝별 득점·경기 상태·순위·팀/구장/감독 정보를 제공합니다. 단 **KBO는 `hasEventPlayerStatistics: false`이며 `incidents`/`lineups`/`statistics` 엔드포인트가 모두 404**이므로, 볼카운트·주자·투수/타자·라인업·박스스코어·선수 기록은 제공되지 않습니다. MVP 범위는 이 커버리지에 맞춰 확정했습니다 — 근거는 구현 계획 §2.3 참고.
+2026-09-14~15 실측 기준으로 날짜별 일정(`Schedule_Day`)·이닝별 득점(15칸)·R/H/E·경기 상태·순위(승·패·무·게임차)·구단 정보·선발/승패 투수를 제공하고, 볼카운트·주자·라인업·박스스코어·문자중계·선수 기록까지 같은 API에 있습니다. MVP는 득점 중심으로 완결하고 나머지는 라이브 스키마 관측(`DS-002`) 뒤 P1로 붙입니다 — 근거는 구현 계획 §2.3·§12 참고. 필수 쿼리 `os=a&lang=kr`, 경로는 대소문자 구분.
 
 ## GitHub Pages 배포
 

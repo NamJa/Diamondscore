@@ -27,7 +27,7 @@ fun StandingsScreen(onTeam: (Long) -> Unit) {
 ```
 
 <div class="callout tip"><span class="t">진출선은 LazyColumn DSL로</span>
-<code>item {}</code>은 <code>LazyListScope</code>에서만 호출됩니다 — <code>itemsIndexed</code>의 항목 람다 <strong>안에서는</strong> 쓸 수 없습니다. 위처럼 <code>rows.forEachIndexed</code>로 각 행을 <code>item</code>으로 내보내고, 5위 다음에 별도 <code>item</code>으로 <code>PlayoffDivider</code>를 끼웁니다. 공급 안 되는 컬럼은 <code>-</code>가 아니라 컬럼 자체를 숨기고, 동률은 <code>position</code>을 그대로 씁니다(무승부는 파생, Step 3 함정 1).
+<code>item {}</code>은 <code>LazyListScope</code>에서만 호출됩니다 — <code>itemsIndexed</code>의 항목 람다 <strong>안에서는</strong> 쓸 수 없습니다. 위처럼 <code>rows.forEachIndexed</code>로 각 행을 <code>item</code>으로 내보내고, 5위 다음에 별도 <code>item</code>으로 <code>PlayoffDivider</code>를 끼웁니다. 공급 안 되는 컬럼은 <code>-</code>가 아니라 컬럼 자체를 숨기고, 동률은 <code>position</code>을 그대로 씁니다(무승부는 <code>draw_count</code>로 직접 옵니다).
 </div>
 
 **Repository · 매퍼 · ViewModel · 헤더** (완전한 코드)
@@ -36,27 +36,26 @@ fun StandingsScreen(onTeam: (Long) -> Unit) {
 
 ```kotlin
 class StandingsRepository @Inject constructor(
-    private val api: SofaScoreApi, private val dao: StandingDao,
+    private val api: WisetotoApi, private val dao: StandingDao,
 ) {
-    fun observe(sid: Long): Flow<List<Standing>> = dao.observe(sid).map { it.map(StandingEntity::toDomain) }
+    fun observe(year: Int): Flow<List<Standing>> = dao.observe(year).map { it.map(StandingEntity::toDomain) }
 
-    /** 현재 시즌 id — 하드코딩 금지, /seasons 첫 항목 (Step 4의 GamesRepository와 같은 규칙) */
-    suspend fun currentSeasonId(): Long = api.seasons().seasons.first().id
+    /** 시즌 = 연도 (Step 4의 GamesRepository와 같은 규칙). 시즌 ID 같은 것은 없다. */
+    fun currentSeasonYear(): Int = LocalDate.now(SEOUL).year
 
-    suspend fun refresh(sid: Long) {
-        val rows = api.standings(sid).standings.firstOrNull()?.rows.orEmpty()
-        dao.replace(sid, rows.map { it.toDomain().toEntity(sid) })     // TTL 10분 캐시
+    suspend fun refresh(year: Int) {
+        val rows = api.leagueRank(year).body().rank                  // 서버 캐시 1시간, 앱 TTL 10분
+        dao.replace(year, rows.map { it.toDomain().toEntity(year) })
     }
 }
 
-// teamNameKo는 core/common (순수 Kotlin) — core/designsystem이 아니다
+// teamNameKo·teamShort는 core/common (순수 Kotlin) — core/designsystem이 아니다
 fun StandingEntity.toDomain() = Standing(
-    position, TeamRef(teamId, teamNameKo(teamId, ""), ""),
-    games, wins, losses, draws, winPct, gamesBehind, runsFor, runsAgainst, runDiff, playoffTier)
+    position, TeamRef(teamId, teamNameKo(teamId, ""), teamShort(teamId)),
+    games, wins, losses, draws, winPct, gamesBehind, streak)
 
-fun Standing.toEntity(sid: Long) = StandingEntity(
-    sid, team.id, position, games, wins, losses, draws,
-    winPct, gamesBehind, runsFor, runsAgainst, runDiff, playoffTier)
+fun Standing.toEntity(year: Int) = StandingEntity(
+    year, team.id, position, games, wins, losses, draws, winPct, gamesBehind, streak)
 ```
 
 `feature/standings/StandingsViewModel.kt` — 현재 시즌은 repository에게 묻습니다:
@@ -66,20 +65,15 @@ fun Standing.toEntity(sid: Long) = StandingEntity(
 class StandingsViewModel @Inject constructor(
     private val repo: StandingsRepository,
 ) : ViewModel() {
-    private val seasonId = MutableStateFlow<Long?>(null)
-    val ui: StateFlow<List<Standing>> = seasonId.filterNotNull()
-        .flatMapLatest { repo.observe(it) }
+    private val year = repo.currentSeasonYear()
+    val ui: StateFlow<List<Standing>> = repo.observe(year)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    init { viewModelScope.launch {
-        val sid = repo.currentSeasonId()
-        seasonId.value = sid
-        runCatching { repo.refresh(sid) }
-    } }
+    init { viewModelScope.launch { runCatching { repo.refresh(year) } } }
 }
 ```
 
-<div class="callout warn"><span class="t">ViewModel에 <code>SofaScoreApi</code>를 주입하지 않는다</span>
-"시즌 id 하나만 필요한데" 싶어 <code>SofaScoreApi</code>를 ViewModel에 넣으면 두 가지가 동시에 깨집니다 — <code>feature</code>가 <code>data/remote</code>를 참조하고, <code>SeasonsDto</code>가 data 레이어를 벗어납니다. 필요한 건 <code>Long</code> 하나이니 repository에 <code>currentSeasonId()</code>를 두는 게 맞습니다. 규칙을 어기는 코드는 거의 항상 이렇게 "한 번만"으로 들어옵니다.
+<div class="callout warn"><span class="t">ViewModel에 <code>WisetotoApi</code>를 주입하지 않는다</span>
+"순위 한 번만 부르면 되는데" 싶어 <code>WisetotoApi</code>를 ViewModel에 넣으면 두 가지가 동시에 깨집니다 — <code>feature</code>가 <code>data/remote</code>를 참조하고, <code>Envelope&lt;LeagueRankDto&gt;</code>가 data 레이어를 벗어납니다. 순위는 Room을 거쳐 <code>Standing</code>으로만 받습니다. 규칙을 어기는 코드는 거의 항상 이렇게 "한 번만"으로 들어옵니다.
 </div>
 
 `feature/standings/StandingsHeader.kt` — 컬럼 폭은 `StandingRow`와 맞춥니다:
@@ -95,6 +89,8 @@ fun StandingsHeader() = Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, 
     Text("GB", Modifier.width(40.dp), style = st, color = c, textAlign = TextAlign.End)
 }
 ```
+
+무승부는 <code>draw_count</code>로 직접 오고, 연속 기록(<code>streak</code>, "6승")도 함께 옵니다. 진출권 배지 데이터는 없으므로 5위 뒤 진출선은 UI 고정 규칙으로만 그립니다.
 
 ## 2. 팀 상세 — 컬러 헤더
 
@@ -139,7 +135,7 @@ fun TeamHeader(team: TeamRef, record: String, isFav: Boolean, onFav: () -> Unit,
 
 ```kotlin
 AsyncImage(
-    model = "https://img.sofascore.com/api/v1/team/${team.id}/image",
+    model = "https://storage.wisetoto.com/data/sports_db/team_${team.id}.png",   // _s.png는 소형
     contentDescription = team.nameKo,
     error = rememberVectorPainter(Icons.Outlined.Shield),
     modifier = Modifier.size(56.dp).clip(CircleShape),
@@ -155,19 +151,29 @@ AsyncImage(
 // domain/model — data 레이어가 UI 타입을 만들지 않게 한다
 data class TeamDetail(
     val team: TeamRef,
+    val stadium: String?, val manager: String?,   // Team_Info — 없으면 null
     val recent: List<GameSummary>,
     val upcoming: List<GameSummary>,
 )
 ```
 
+최근·다음 경기는 **네트워크 없이** Room에서 꺼냅니다 — Step 4 프리페치로 시즌 전체가 이미 있습니다. 구장·감독만 `Team_Info` 1회입니다.
+
 ```kotlin
-class TeamsRepository @Inject constructor(private val api: SofaScoreApi) {
-    fun observeTeam(id: Long): Flow<TeamDetail> = flow {
-        val recent = runCatching { api.teamEvents(id, "last", 0).events }.getOrDefault(emptyList())
-            .map { it.toSummary() }.takeLast(5).reversed()
-        val upcoming = runCatching { api.teamEvents(id, "next", 0).events }.getOrDefault(emptyList())
-            .map { it.toSummary() }.take(5)
-        emit(TeamDetail(TeamRef(id, teamNameKo(id, ""), ""), recent, upcoming))
+class TeamsRepository @Inject constructor(
+    private val api: WisetotoApi, private val dao: GameDao,
+) {
+    fun observeTeam(id: Long): Flow<TeamDetail> {
+        val info = flow { emit(runCatching { api.teamInfo(id).body().teamInfo?.detail }.getOrNull()) }
+        return combine(dao.observeByTeam(id).map { it.map(GameEntity::toSummary) }, info) { games, d ->
+            val now = Instant.now()
+            TeamDetail(
+                team = TeamRef(id, teamNameKo(id, d?.name ?: ""), teamShort(id)),
+                stadium = d?.stadiumName, manager = d?.director,
+                recent = games.filter { it.status == GameStatus.FINAL }.takeLast(5).reversed(),
+                upcoming = games.filter { it.status == GameStatus.SCHEDULED && it.startsAt >= now }.take(5),
+            )
+        }
     }
 }
 ```
@@ -179,6 +185,7 @@ data class TeamDetailUi(
     val team: TeamRef, val record: String,
     val recent: List<GameSummary>, val upcoming: List<GameSummary>,
     val isFavorite: Boolean,
+    val stadium: String? = null, val manager: String? = null,
 )
 
 /** 순위(Standing)에서 전적 문자열 — "리그 5위 · 50·44·2 · .532". */
@@ -192,7 +199,8 @@ class TeamDetailViewModel @AssistedInject constructor(
 ) : ViewModel() {
     val ui: StateFlow<TeamDetailUi?> =
         combine(repo.observeTeam(key.teamId), favorites.observeTeams()) { d, favs ->
-            TeamDetailUi(d.team, record = "", d.recent, d.upcoming, isFavorite = key.teamId in favs)
+            TeamDetailUi(d.team, record = "", d.recent, d.upcoming, isFavorite = key.teamId in favs,
+                stadium = d.stadium, manager = d.manager)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun toggleFavorite() = viewModelScope.launch { favorites.toggle(key.teamId) }
@@ -212,6 +220,7 @@ fun TeamDetailScreen(key: TeamDetailKey, onGame: (Long) -> Unit, onBack: () -> U
     ui?.let { d ->
         LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             item { TeamHeader(d.team, d.record, d.isFavorite, vm::toggleFavorite, onBack) }
+            item { Caption(listOfNotNull(d.stadium, d.manager?.let { "감독 $it" }).joinToString(" · ")) }
             item { SectionLabel("최근 경기") }
             items(d.recent, key = { it.id }) { GameCard(it) { onGame(it.id) } }
             item { SectionLabel("다음 경기") }
@@ -222,7 +231,7 @@ fun TeamDetailScreen(key: TeamDetailKey, onGame: (Long) -> Unit, onBack: () -> U
 ```
 
 <div class="callout tip"><span class="t">전적 문자열</span>
-<code>record</code>는 순위 캐시의 <code>Standing</code>을 <code>teamRecord()</code>에 넣어 채웁니다. <code>teamRecord()</code>는 표시용 문자열이니 <strong>ViewModel에서</strong> 만듭니다 — <code>StandingsRepository</code>를 하나 더 주입해 <code>observe(sid)</code>를 <code>combine</code>에 넣고 해당 팀 행을 찾으면 됩니다. repository가 완성된 문자열을 내보내게 하지 마세요.
+<code>record</code>는 순위 캐시의 <code>Standing</code>을 <code>teamRecord()</code>에 넣어 채웁니다. <code>teamRecord()</code>는 표시용 문자열이니 <strong>ViewModel에서</strong> 만듭니다 — <code>StandingsRepository</code>를 하나 더 주입해 <code>observe(year)</code>를 <code>combine</code>에 넣고 해당 팀 행을 찾으면 됩니다. repository가 완성된 문자열을 내보내게 하지 마세요.
 </div>
 
 ## 3. 팀 목록 (TeamsScreen)
@@ -256,7 +265,7 @@ fun TeamsScreen(onTeam: (Long) -> Unit) {
 ```
 
 <div class="callout tip"><span class="t">서버에 있는데 왜 로컬 표를 쓰나</span>
-<code>/standings</code>에 팀이 다 나오지만 한국어 팀명이 없고, 순위 조회는 시즌 id를 먼저 알아야 합니다. 목록에 필요한 건 <strong>id·한글명·컬러</strong>뿐이고 셋 다 로컬에 있으니, 요청 하나를 안 하는 쪽이 맞습니다. 팀 상세로 들어가면 그때 <code>/team/{id}/events</code>를 칩니다.
+<code>/extra/Team_Select</code>가 10개 구단(약칭·<code>team_ifno_seq</code>)을 주지만, 목록에 필요한 건 <strong>id·한글명·컬러</strong>뿐이고 셋 다 로컬에 있으니 요청 하나를 안 하는 쪽이 맞습니다. 팀 상세로 들어가면 그때 <code>Team_Info</code>(구장·감독)만 한 번 칩니다. 최근·다음 경기는 Room에 이미 있습니다.
 </div>
 
 ## 4. 즐겨찾기

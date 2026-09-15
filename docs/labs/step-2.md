@@ -408,8 +408,8 @@ Google Fonts 다운로드가 부담되면 <code>Bebas Neue</code>·<code>Archivo
 
 ## 8. 구단 컬러 + 한국어 팀명
 
-API는 한국어 팀명을 주지 않고 `teamColors`가 전 구단 동일합니다. 목업의 구단 컬러와 한글명을
-**앱에 직접** 넣습니다.
+API는 한글 약칭(`KIA`, `두산`)만 주고 정식 명칭·구단 컬러는 주지 않으며, 구장명 표기가 경기마다 다릅니다(계획서 §3.4-6).
+목업의 구단 컬러·정식 명칭·홈 도시를 **앱에 직접** 넣습니다. 팀 ID는 wisetoto의 `team_info_seq`입니다.
 
 이 표를 **두 파일로 나눕니다.** 팀명·약칭은 매퍼(data 레이어)가 쓰고, 컬러는 UI만 씁니다. 한 파일에
 두면 `Color` 때문에 data 레이어가 Compose에 의존하게 됩니다 — 나중에 모듈을 쪼갤 때 그 의존이
@@ -420,19 +420,19 @@ API는 한국어 팀명을 주지 않고 `teamColors`가 전 구단 동일합니
 ```kotlin
 package com.diamondscore.core.common
 
-data class KboTeam(val id: Long, val nameKo: String, val short: String, val colorArgb: Long)
+data class KboTeam(val id: Long, val nameKo: String, val short: String, val home: String, val colorArgb: Long)
 
-val KBO_TEAMS: Map<Long, KboTeam> = listOf(
-    KboTeam(188409, "KT 위즈",     "KT",  0xFF8A8D91), // 검정은 안 보여 회색 대체
-    KboTeam(188245, "삼성 라이온즈", "삼성", 0xFF074CA1),
-    KboTeam(188257, "LG 트윈스",    "LG",  0xFFC30452),
-    KboTeam(188248, "두산 베어스",  "두산", 0xFF232A63),
-    KboTeam(188247, "KIA 타이거즈", "KIA", 0xFFEA0029),
-    KboTeam(188243, "한화 이글스",  "한화", 0xFFFC4E00),
-    KboTeam(188253, "NC 다이노스",  "NC",  0xFF315288),
-    KboTeam(188246, "롯데 자이언츠", "롯데", 0xFF24406E),
-    KboTeam(188244, "SSG 랜더스",   "SSG", 0xFFCE0E2D),
-    KboTeam(188258, "키움 히어로즈", "키움", 0xFF570514),
+val KBO_TEAMS: Map<Long, KboTeam> = listOf(       // id = wisetoto team_info_seq
+    KboTeam(2674, "KT 위즈",     "KT",  "수원", 0xFF8A8D91), // 검정은 안 보여 회색 대체
+    KboTeam(318,  "삼성 라이온즈", "삼성", "대구", 0xFF074CA1),
+    KboTeam(322,  "LG 트윈스",    "LG",  "잠실", 0xFFC30452),
+    KboTeam(316,  "두산 베어스",  "두산", "잠실", 0xFF232A63),
+    KboTeam(320,  "KIA 타이거즈", "KIA", "광주", 0xFFEA0029),
+    KboTeam(319,  "한화 이글스",  "한화", "대전", 0xFFFC4E00),
+    KboTeam(2107, "NC 다이노스",  "NC",  "창원", 0xFF315288),
+    KboTeam(317,  "롯데 자이언츠", "롯데", "사직", 0xFF24406E),
+    KboTeam(315,  "SSG 랜더스",   "SSG", "인천", 0xFFCE0E2D),
+    KboTeam(321,  "키움 히어로즈", "키움", "고척", 0xFF570514),
 ).associateBy { it.id }
 
 fun teamNameKo(id: Long, fallback: String): String = KBO_TEAMS[id]?.nameKo ?: fallback

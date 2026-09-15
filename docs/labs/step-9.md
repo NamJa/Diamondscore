@@ -171,7 +171,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 SettingSwitch("경기 시작·득점 알림", checked = false, enabled = false, hint = "준비 중")
             }
             SettingGroup("정보") {
-                SettingRow("데이터 출처", "SofaScore · 개인 용도")
+                SettingRow("데이터 출처", "wisetoto (프로야구 LIVE) · 개인 용도")
                 SettingLink("개인정보 처리방침"); SettingLink("오픈소스 라이선스")
                 SettingRow("앱 버전", "0.1.0")
             }
@@ -371,7 +371,7 @@ R8이 kotlinx.serialization DTO를 지우면 릴리스에서만 파싱 크래시
 - [ ] R8 릴리스 빌드가 실제로 동작
 
 <div class="callout ok"><span class="t">완성 🎉</span>
-목업의 모든 화면을 데이터로 살아 움직이게 만들었습니다. 확장은 P1(문자중계·라인업·선수 기록)에 보조 소스를 붙이거나, 공개 배포를 위해 <a href="#/IMPLEMENTATION_PLAN_KO">전체 계획서</a> §13(BFF 전환)을 참고하세요.
+목업의 모든 화면을 데이터로 살아 움직이게 만들었습니다. 확장은 P1(볼카운트·문자중계·라인업·선수 기록 — 같은 API의 <code>detail</code>·<code>Live_comment</code>·<code>lineup</code>·<code>Player_Info</code>)을 붙이거나, 공개 배포를 위해 <a href="#/IMPLEMENTATION_PLAN_KO">전체 계획서</a> §13(BFF 전환)을 참고하세요.
 </div>
 
 <div class="pager">

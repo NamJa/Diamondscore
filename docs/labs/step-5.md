@@ -182,7 +182,7 @@ private fun GameCardPreview() = DiamondScoreTheme {
         GameCard(sampleLive) {}       // ● 6회말  LG 2 : KIA 3
         GameCard(sampleScheduled) {}  // 18:30  삼성 · 롯데
         GameCard(sampleFinalExtra) {} // 종료·연장  두산 1 : SSG 2
-        GameCard(samplePostponed) {}  // 우천 연기
+        GameCard(sampleCanceled) {}  // 취소
     }
 }
 ```
@@ -252,8 +252,8 @@ fun TotalCell(v: Int?, width: Dp = 34.dp) =
     }
 ```
 
-<div class="callout danger"><span class="t">period* 를 쓰지 말 것</span>
-열 개수는 <code>innings</code> 맵의 최대 번호로 계산합니다. <code>period1..9</code>만 읽으면 연장 득점이 사라집니다(Step 3 함정 2). Preview에 <strong>10이닝 경기</strong>를 하나 넣어 10열이 나오는지 꼭 확인하세요.
+<div class="callout danger"><span class="t">15칸을 그대로 그리지 말 것</span>
+열 개수는 매퍼가 잘라 준 <code>innings</code>의 최대 번호로 계산합니다. 서버의 <code>boxscore</code>는 항상 15칸이고 미진행이 <code>null</code>입니다(Step 3 함정 5) — 15열을 그대로 그리면 빈 열 4~6개가 남습니다. 9회말 미실시(홈 승)도 <code>null</code>이라 빈칸으로 보입니다. Preview에 <strong>11이닝 경기</strong>를 하나 넣어 11열이 나오는지 꼭 확인하세요.
 </div>
 
 ## 4. 순위 행 (StandingRow) + 진출선
@@ -280,7 +280,7 @@ fun StandingRow(s: Standing, onClick: () -> Unit) = Column {
         Spacer(Modifier.width(10.dp))
         Text(s.team.nameKo, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge,
             color = if (s.position <= 5) MaterialTheme.colorScheme.onSurface else DsColors.muted2)
-        Text("${s.wins}·${s.losses}·${s.draws}", Modifier.width(78.dp),       // 승·패·무 (무 파생!)
+        Text("${s.wins}·${s.losses}·${s.draws}", Modifier.width(78.dp),       // 승·패·무 (무는 draw_count 직접)
             style = ScoreNumber.copy(fontSize = 13.sp), textAlign = TextAlign.Center)
         Text("%.3f".format(s.winPct).removePrefix("0"), Modifier.width(46.dp),
             style = Display.copy(fontSize = 17.sp), textAlign = TextAlign.End)     // 승률 Bebas
@@ -440,16 +440,17 @@ private fun sample(
     status = status, statusLabel = label,
     home = TeamRef(home, teamNameKo(home, ""), ""), away = TeamRef(away, teamNameKo(away, ""), ""),
     homeRuns = hr, awayRuns = ar, winner = winner, wentExtra = extra,
-    venueShort = venue, changeTimestamp = null,
+    venueShort = venue,
 )
 
-val sampleLive       = sample(1, GameStatus.LIVE, home = 188247, away = 188257, hr = 3, ar = 2, label = "6회말", venue = "광주")
-val sampleScheduled  = sample(2, GameStatus.SCHEDULED, home = 188246, away = 188245, venue = "사직")
-val sampleFinalExtra = sample(3, GameStatus.FINAL, home = 188244, away = 188248, hr = 2, ar = 1, label = "종료", winner = Winner.HOME, extra = true, venue = "인천")
-val samplePostponed  = sample(4, GameStatus.POSTPONED, home = 188253, away = 188243, label = "우천 연기", venue = "창원")
+// 팀 id는 wisetoto team_info_seq (Step 2 KBO_TEAMS)
+val sampleLive       = sample(1, GameStatus.LIVE, home = 320, away = 322, hr = 3, ar = 2, label = "6회말", venue = "광주")
+val sampleScheduled  = sample(2, GameStatus.SCHEDULED, home = 317, away = 318, label = "경기 전", venue = "사직")
+val sampleFinalExtra = sample(3, GameStatus.FINAL, home = 315, away = 316, hr = 2, ar = 1, label = "경기 종료", winner = Winner.HOME, extra = true, venue = "인천")
+val sampleCanceled   = sample(4, GameStatus.CANCELED, home = 2107, away = 319, label = "취소", venue = "창원")
 ```
 
-<div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(10이닝) · 순위 행+진출선 · 상태 4종이 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
+<div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(11이닝) · 순위 행+진출선 · 상태 4종이 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-4">← Step 4</a>

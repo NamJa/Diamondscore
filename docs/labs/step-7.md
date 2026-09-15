@@ -35,8 +35,8 @@ class GameDetailViewModel @AssistedInject constructor(
 }
 ```
 
-`observeGameDetail(id)`는 `GameEntity` + `innings` 테이블을 합쳐 `GameDetail`(요약·라인스코어·구장·감독)을
-방출합니다(DAO `@Transaction` 또는 두 Flow `combine`).
+`observeGameDetail(id)`는 `GameEntity` + `innings` 테이블 + 메모리의 상세 메타를 합쳐 `GameDetail`(요약·라인스코어·구장·R/H/E·투수 요약)을
+방출합니다(Step 4). 이닝은 상세를 한 번 받아야 채워지므로 화면 진입 시 `refresh()`를 호출합니다.
 
 <div class="callout warn"><span class="t">Nav3에서 인자를 받는 방법은 이것뿐이다</span>
 Nav2에서는 route 문자열 → <code>Bundle</code> → <code>SavedStateHandle["eventId"]</code>였습니다. Nav3는 <code>GameDetailKey(eventId)</code> <strong>객체</strong>를 back stack에 넣으므로 <code>Bundle</code>을 거치지 않습니다. 그래서 <code>savedState["eventId"]</code>는 <code>null</code>이고, <code>checkNotNull</code>이 터집니다. 대신 <code>@AssistedInject</code>로 키를 주입하면 <code>Long</code> 파싱도, <code>NavType</code>도, 키 이름 오타도 없습니다 — 타입이 맞지 않으면 컴파일이 안 됩니다.
@@ -108,9 +108,9 @@ fun GameDetailScreen(key: GameDetailKey, onBack: () -> Unit) {
                     LineScoreTable(detail.summary.away, detail.summary.home, detail.innings,
                         detail.summary.awayRuns, detail.summary.homeRuns)
                 }
-                LabeledBlock("경기 정보") { InfoTable(detail) }   // 경기장·수용인원·감독·시즌
-                DataNote()  // "KBO는 이닝별 득점까지 제공… 볼카운트·라인업은 없음"
-                // ⚠️ 볼카운트·주자·라인업·문자중계 탭은 만들지 않는다
+                LabeledBlock("경기 정보") { InfoTable(detail) }   // 경기장·안타·실책·투수
+                DataNote()  // "볼카운트·라인업·문자중계는 다음 단계"
+                // ⚠️ 볼카운트·주자·라인업·문자중계 탭은 아직 만들지 않는다 (DS-002 이후 P1)
             }
         } ?: LoadingCards(count = 2)
     }
@@ -153,12 +153,19 @@ fun statusColor(g: GameSummary): Color =
 fun InfoTable(d: GameDetail) = Surface(
     color = Color(0xFF12161C), shape = RoundedCornerShape(12.dp),
     border = BorderStroke(1.dp, Color(0xFF232A34))) {
+    // 공급되는 행만 그린다 — null이면 행 자체를 숨긴다 (계획서 §1.3 표시 원칙)
+    val rows = listOfNotNull(
+        d.venueName?.let { "경기장" to it },
+        (d.summary.awayStarter ?: d.summary.homeStarter)?.let {
+            "선발" to "${d.summary.awayStarter ?: "-"} · ${d.summary.homeStarter ?: "-"}" },
+        d.awayHits?.let { "안타" to "${d.awayHits} · ${d.homeHits}" },          // 원정 · 홈 순
+        d.awayErrors?.let { "실책" to "${d.awayErrors} · ${d.homeErrors}" },
+        d.winPitcher?.let { "승리 투수" to it },
+        d.losePitcher?.let { "패전 투수" to it },
+        d.savePitcher?.let { "세이브" to it },
+    )
     Column(Modifier.padding(horizontal = 14.dp)) {
-        InfoRow("경기장", d.venueName ?: "-")
-        InfoRow("수용 인원", d.capacity?.let { "%,d석".format(it) } ?: "-")
-        InfoRow("감독", listOfNotNull(d.awayManager, d.homeManager)
-            .joinToString(" · ").ifEmpty { "[감독명]" })                 // 데이터 없으면 placeholder
-        InfoRow("시즌", d.seasonName ?: "KBO League 2026", last = true)
+        rows.forEachIndexed { i, (k, v) -> InfoRow(k, v, last = i == rows.lastIndex) }
     }
 }
 
@@ -176,13 +183,13 @@ private fun InfoRow(k: String, v: String, last: Boolean = false) {
 fun DataNote() = Row(Modifier.padding(horizontal = 4.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     DsIcon(Icons.Outlined.InfoOutline, size = 16.dp, tint = DsColors.muted2)
-    Caption("KBO는 이닝별 득점까지 제공됩니다. 볼카운트·주자·라인업·선수 기록은 제공되지 않아 화면에 포함하지 않았습니다.")
+    Caption("이닝별 득점·안타·실책과 투수 요약까지 표시합니다. 볼카운트·주자·라인업·문자중계는 라이브 갱신 방식을 확인한 뒤 다음 단계에서 추가합니다.")
 }
 ```
 
 ## 4. 종료 확정 처리
 
-`inprogress → finished` 전환 시, 마지막 이닝 득점이 반영되기 전에 상태만 먼저 바뀔 수 있습니다.
+`LIVE → FINAL`(`state: e`) 전환 시, 마지막 이닝 득점이나 `end_summary`(승·패 투수)가 반영되기 전에 상태만 먼저 바뀔 수 있습니다.
 전환 직후 한 번 더 조회합니다.
 
 ```kotlin
@@ -191,12 +198,12 @@ LaunchedEffect(d?.summary?.status) {
 }
 ```
 
-라이브 중에는 화면이 보일 때만 15초 간격으로 상세를 갱신합니다(§7.1 — `events/live`에 이닝이 포함되면
-이 폴링을 없앨 수 있음, `DS-002` 결과에 따름).
+라이브 중에는 화면이 보일 때만 15초 간격으로 `refresh()`를 호출합니다(Step 6의 `LivePolling`과 같은 패턴). 목록 응답에는
+이닝별 득점이 없으므로 이 폴링은 없앨 수 없습니다(계획서 §7.1). 서버 캐시가 2초라 15초면 충분합니다.
 
 ## 5. 실행 확인
 
-<div class="checkpoint"><span class="t"></span> 9이닝 경기는 1~9열, 연장 경기는 10·11열이 <strong>추가로</strong> 뜨고 미진행 이닝은 빈칸이면 성공(목업과 동일). 취소/미진행은 라인스코어 대신 상태 라벨이 원문으로 보입니다.</div>
+<div class="checkpoint"><span class="t"></span> 9이닝 경기는 1~9열, 연장 경기는 10·11열이 <strong>추가로</strong> 뜨고 미진행 이닝(9회말 미실시 포함)은 빈칸이면 성공(목업과 동일). 취소 경기는 라인스코어가 비고 상태 라벨 "취소"가 보입니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-6">← Step 6</a>

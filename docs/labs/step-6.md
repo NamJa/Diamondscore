@@ -36,7 +36,7 @@ class GamesViewModel @Inject constructor(
 
     fun move(days: Long) = setDate(date.value.plusDays(days))
     fun today() = setDate(LocalDate.now(SEOUL))
-    fun refreshLive() = viewModelScope.launch { runCatching { repo.refreshLive() } }
+    fun refreshDay() = viewModelScope.launch { runCatching { repo.refreshDay(date.value) } }   // 보고 있는 날짜 1회
 
     private fun setDate(d: LocalDate) {
         date.value = d
@@ -92,7 +92,7 @@ fun GamesScreen(onGame: (Long) -> Unit) {
 
         when {
             ui.loading            -> LoadingCards()
-            ui.error              -> ErrorState(onRetry = vm::refreshLive)
+            ui.error              -> ErrorState(onRetry = vm::refreshDay)
             ui.games.isEmpty()    -> EmptyDay(onNearest = { /* 가장 가까운 경기일 */ })
             else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                 sectioned(ui.games).forEach { (title, items) ->
@@ -130,7 +130,7 @@ fun sectioned(games: List<GameSummary>): List<Pair<String, List<GameSummary>>> =
 
 ## 4. 라이브 폴링 — 화면이 보일 때만
 
-`GET /sport/baseball/events/live` 한 번이 진행 중인 KBO 전 경기를 줍니다. **`STARTED`** 에서만 20초 간격.
+`GET /live/Schedule_Day/{오늘}` 한 번이 그날 KBO 전 경기(최대 5)의 상태·이닝·점수를 줍니다. 응답은 5KB 안팎입니다. **`STARTED`** 에서만 20초 간격(공식 앱은 4초지만 그렇게까지 칠 이유가 없습니다).
 
 ```kotlin
 @Composable
@@ -140,7 +140,7 @@ fun LivePolling(vm: GamesViewModel, hasLive: Boolean) {
         if (!hasLive) return@LaunchedEffect
         owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                vm.refreshLive()
+                vm.refreshDay()
                 delay(20_000L + Random.nextLong(-2000, 2000))   // jitter ±2s
             }
         }
@@ -148,7 +148,7 @@ fun LivePolling(vm: GamesViewModel, hasLive: Boolean) {
 }
 ```
 
-화면에서 `LivePolling(vm, ui.games.any { it.status == GameStatus.LIVE })`.
+화면에서 `LivePolling(vm, ui.games.any { it.status == GameStatus.LIVE })`. 라이브가 없어도 오늘 날짜로 진입할 때는 `refreshDay()`를 한 번 호출해 프리페치된 일정 위에 최신 상태(취소·선발 변경)를 덮습니다 — `LaunchedEffect(ui.date) { if (ui.date == LocalDate.now(SEOUL)) vm.refreshDay() }`. 목록 응답에는 이닝별 득점이 없으므로 상세 화면은 따로 폴링합니다(Step 7).
 
 <div class="callout warn"><span class="t">홈으로 나가면 멈춰야 한다</span>
 <code>repeatOnLifecycle(STARTED)</code>가 백그라운드 진입 시 코루틴을 취소합니다. 안 쓰면 배터리·트래픽이 새고 차단 위험이 커집니다(§7).
