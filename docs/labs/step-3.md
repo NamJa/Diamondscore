@@ -71,7 +71,7 @@ data class Standing(
 ```
 
 <div class="callout tip"><span class="t">상태 enum에 <code>POSTPONED</code>·<code>SUSPENDED</code>가 남아 있는 이유</span>
-wisetoto의 <code>state</code>는 <code>a</code>(예정)·<code>e</code>(종료)·<code>c</code>(취소) 세 값만 관측됐고 연기·서스펜디드를 따로 구분하지 않습니다(우천 취소도 <code>c</code>). 두 값은 지금 매핑되지 않지만 목록 화면의 "취소·연기" 섹션이 이미 쓰고 있어 그대로 둡니다. 표본이 잡히면 매퍼만 고치면 됩니다.
+wisetoto의 <code>state</code>는 <code>a</code>(예정)·<code>i</code>(진행 중)·<code>e</code>(종료)·<code>c</code>(취소) 네 값이 관측됐고 연기·서스펜디드를 따로 구분하지 않습니다(우천 취소도 <code>c</code>). 두 값은 지금 매핑되지 않지만 목록 화면의 "취소·연기" 섹션이 이미 쓰고 있어 그대로 둡니다. 표본이 잡히면 매퍼만 고치면 됩니다.
 </div>
 
 ## 2. DTO — 서버 JSON 그대로 받기
@@ -103,7 +103,7 @@ import kotlinx.serialization.Serializable
     val seq: String,
     @SerialName("game_timestamp") val gameTimestamp: Long? = null,     // Schedule_Day에만 있음
     @SerialName("game_date") val gameDate: String? = null,             // "2026-09-13 17:00:00" (둘 다 있음)
-    val state: String? = null,                                         // a / e / c
+    val state: String? = null,                                         // a / i / e / c
     val inning: String? = null,                                        // "bs9_1" = 9회초
     @SerialName("stadium_name") val stadiumName: String? = null,
     @SerialName("home_team_info_seq") val homeTeamSeq: String,
@@ -287,12 +287,13 @@ import java.time.LocalDateTime
 
 private val INNING_CODE = Regex("""bs(\d+)_([12])""")   // bs7_2 = 7회말
 
-/** 함정 4·미검증: a/e/c만 확정. 그 외 값인데 점수가 있으면 진행 중으로 본다(DS-002에서 확정). */
-fun mapStatus(state: String?, hasScore: Boolean): GameStatus = when (state) {
+/** a/i/e/c는 2026-09-15 실측. 그 외 값은 UNKNOWN — 화면은 원문 state를 라벨로 보여준다. */
+fun mapStatus(state: String?): GameStatus = when (state) {
     "a" -> GameStatus.SCHEDULED
+    "i" -> GameStatus.LIVE
     "e" -> GameStatus.FINAL
     "c" -> GameStatus.CANCELED
-    else -> if (hasScore) GameStatus.LIVE else GameStatus.UNKNOWN
+    else -> GameStatus.UNKNOWN
 }
 
 fun inningLabel(code: String?): String? =
@@ -335,7 +336,7 @@ internal fun buildSummary(
     homeSeq: String, homeName: String?, awaySeq: String, awayName: String?,
     homeScore: Int?, awayScore: Int?, homeStarter: String? = null, awayStarter: String? = null,
 ): GameSummary {
-    val st = mapStatus(state, hasScore = homeScore != null || awayScore != null)
+    val st = mapStatus(state)
     val hr = homeScore.takeUnless { st == GameStatus.CANCELED || st == GameStatus.SCHEDULED }   // 함정 3: 노게임 부분 점수 버림
     val ar = awayScore.takeUnless { st == GameStatus.CANCELED || st == GameStatus.SCHEDULED }
     val home = teamRef(homeSeq, homeName)
@@ -399,7 +400,7 @@ fun RankRowDto.toDomain() = Standing(
 ```
 
 <div class="callout danger"><span class="t">함정 8개 — 이 파일이 막는 것</span>
-① 경로 대소문자·<code>yyyyMMdd</code> 형식·<code>os/version/lang</code> 세 키 필수(API 인터페이스·인터셉터) ② 점수·순위가 <strong>문자열</strong>(<code>toRuns</code>) ③ <code>state:"c"</code>인데 노게임 부분 점수가 남아 있음(<code>buildSummary</code>) ④ 진행 중 <code>state</code> 값 미검증(<code>mapStatus</code> 폴백) ⑤ 라인스코어 15칸 고정, <code>null</code>과 <code>0</code> 구분(<code>parseInnings</code>) ⑥ 구장명 표기 비정규(앱 표 사용) ⑦ <code>game_date</code>는 표시 문자열, 변경 감지 필드 없음(<code>game_timestamp</code> 사용, 쓰기 스킵은 Step 4) ⑧ 목록에 WBC·시범경기·올스타전이 섞여 있음(<code>isKboRegular</code>).
+① 경로 대소문자·<code>yyyyMMdd</code> 형식·<code>os/version/lang</code> 세 키 필수(API 인터페이스·인터셉터) ② 점수·순위가 <strong>문자열</strong>(<code>toRuns</code>) ③ <code>state:"c"</code>인데 노게임 부분 점수가 남아 있음(<code>buildSummary</code>) ④ <code>game_result</code>가 진행 중엔 이닝 라벨·종료 후엔 w/l/d라 승패는 총점 비교로(<code>buildSummary</code>) ⑤ 라인스코어 15칸 고정, <code>null</code>과 <code>0</code> 구분(<code>parseInnings</code>) ⑥ 구장명 표기 비정규(앱 표 사용) ⑦ <code>game_date</code>는 표시 문자열, 변경 감지 필드 없음(<code>game_timestamp</code> 사용, 쓰기 스킵은 Step 4) ⑧ 목록에 WBC·시범경기·올스타전이 섞여 있음(<code>isKboRegular</code>).
 </div>
 
 ## 5. fixture 옮기고 매퍼 테스트
@@ -447,10 +448,12 @@ class MapperTest {
         assertNull(d.innings.last().home); assertEquals(0, d.innings.first { it.home == 0 }.home)
     }
 
-    @Test fun `미지의 state는 점수가 있으면 LIVE 없으면 UNKNOWN`() {                        // 함정 4
-        assertEquals(GameStatus.LIVE, mapStatus("zzz", hasScore = true))
-        assertEquals(GameStatus.UNKNOWN, mapStatus("zzz", hasScore = false))
+    @Test fun `state 매핑과 이닝 라벨`() {                                                   // 함정 4
+        assertEquals(GameStatus.LIVE, mapStatus("i"))
+        assertEquals(GameStatus.UNKNOWN, mapStatus("zzz"))
         assertEquals("7회말", inningLabel("bs7_2"))
+        val live = day("schedule_day_live.json").first().toSummary()      // 09-15 18:31 캡처
+        assertEquals(GameStatus.LIVE, live.status); assertEquals("1회초", live.statusLabel); assertEquals(0, live.homeRuns)
     }
 
     @Test fun `3월 목록에서 WBC와 시범경기가 걸러진다`() {                                  // 함정 8

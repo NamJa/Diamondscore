@@ -183,7 +183,7 @@ private fun InfoRow(k: String, v: String, last: Boolean = false) {
 fun DataNote() = Row(Modifier.padding(horizontal = 4.dp),
     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     DsIcon(Icons.Outlined.InfoOutline, size = 16.dp, tint = DsColors.muted2)
-    Caption("이닝별 득점·안타·실책과 투수 요약까지 표시합니다. 볼카운트·주자·라인업·문자중계는 라이브 갱신 방식을 확인한 뒤 다음 단계에서 추가합니다.")
+    Caption("이닝별 득점·안타·실책과 투수 요약까지 표시합니다. 볼카운트·주자·라인업·문자중계는 다음 단계(P1)에서 추가합니다.")
 }
 ```
 

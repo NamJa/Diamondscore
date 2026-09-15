@@ -41,6 +41,8 @@ wt /live/schedule/490683         > fixtures/game_extra.json               # 09-1
 wt /live/schedule/490691         > fixtures/game_final.json               # 09-13 한화 2:9 KIA, 9회말 미실시
 wt "/rank/League_Rank?year=2026" > fixtures/league_rank.json             # 순위 10행
 wt "/extra/Team_Info?team_info_seq=316" > fixtures/team_info.json         # 두산 구단 정보
+# 경기일 18:30 이후에 한 번 더:
+# wt /live/Schedule_Day/$(date +%Y%m%d) > fixtures/schedule_day_live.json  # 진행 중(i) — 없으면 아래 callout의 캡처 값을 참고
 
 ls -la fixtures
 ```
@@ -69,12 +71,12 @@ jq '.data.rank[0]' fixtures/league_rank.json
 - 3월 목록(`schedule_month_march.json`)에 `한국 : 체코`(WBC)와 3/12~3/24 시범경기가 **KBO 정규 경기와 같은 배열에** 섞여 있는가 — 행에 리그 구분 필드가 없다
 
 <div class="callout danger"><span class="t">라이브는 경기 날에만 확인 가능</span>
-진행 중 경기의 <code>state</code> 값은 아직 관측되지 않았습니다(<code>a</code>·<code>e</code>·<code>c</code>만 확인). <strong>실제 경기일 18:30 이후</strong>에 아래로 한 번 더 확인하고 값을 계획서 <code>DS-002</code>에 기록하세요. 상세 응답의 <code>detail</code>(볼카운트·주자·현재 투수/타자)이 진행 중에 채워지는 것도 이때 봅니다.
+진행 중 경기의 <code>state</code>는 <code>i</code>입니다(2026-09-15 18:31 실측). 시작 직후 목록 행은 점수 <code>"0"</code>, <code>inning: "bs1_1"</code>, <code>detail</code>에 볼카운트·주자·현재 투수/타자가 채워지고, 상세의 <code>game_result</code>는 종료 전까지 <code>"1회초"</code> 같은 라벨입니다. <strong>경기일 18:30 이후</strong>에 아래로 직접 한 번 더 보고 <code>fixtures/schedule_day_live.json</code>으로 저장하세요(Step 3 테스트가 씁니다).
 <br><br>
 <code>watch -n 30 'wt /live/Schedule_Day/$(date +%Y%m%d) | jq ".data.Schedule_Day[] | {state, inning, home_score, away_score}"'</code>
 </div>
 
-<div class="checkpoint"><span class="t"></span> <code>fixtures/</code>에 9개 JSON이 저장됐고, 위 6가지 구조를 눈으로 확인했으면 완료. 이 파일들은 Step 3에서 <code>app/src/test/resources/fixtures/</code>로 옮깁니다.</div>
+<div class="checkpoint"><span class="t"></span> <code>fixtures/</code>에 9개 JSON(+ 경기일에 <code>schedule_day_live.json</code>)이 저장됐고, 위 6가지 구조를 눈으로 확인했으면 완료. 이 파일들은 Step 3에서 <code>app/src/test/resources/fixtures/</code>로 옮깁니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-0">← Step 0</a>
