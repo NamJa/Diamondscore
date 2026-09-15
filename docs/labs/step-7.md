@@ -189,14 +189,18 @@ fun DataNote() = Row(Modifier.padding(horizontal = 4.dp),
 
 ## 4. 종료 확정 처리
 
-`LIVE → FINAL`(`state: e`) 전환 시, 마지막 이닝 득점이나 `end_summary`(승·패 투수)가 반영되기 전에 상태만 먼저 바뀔 수 있습니다.
-전환 직후 한 번 더 조회합니다.
+`LIVE → FINAL`(`state: e`) 전환 시 최종 점수와 R/H/E는 상태와 함께 오지만, **승·패·세이브 투수(`end_summary`)는 7~8분 뒤에 채워집니다**(계획서 §2.4 실측 — 그 전엔 `null`). 전환 직후 한 번, 그리고 투수 요약이 비어 있으면 10분 뒤 한 번 더 조회합니다. 15초 폴링은 `FINAL`이 되는 순간 멈춥니다.
 
 ```kotlin
 LaunchedEffect(d?.summary?.status) {
-    if (d?.summary?.status == GameStatus.FINAL) vm.refresh()
+    if (d?.summary?.status == GameStatus.FINAL) {
+        vm.refresh()                                   // 최종 점수·RHEB 확정
+        if (d?.winPitcher == null) { delay(10.minutes); vm.refresh() }   // 투수 요약 지연 반영
+    }
 }
 ```
+
+`InfoTable`은 `null` 행을 숨기므로(§3) 투수 요약이 늦게 와도 화면이 깨지지 않고 행이 나중에 나타납니다.
 
 라이브 중에는 화면이 보일 때만 15초 간격으로 `refresh()`를 호출합니다(Step 6의 `LivePolling`과 같은 패턴). 목록 응답에는
 이닝별 득점이 없으므로 이 폴링은 없앨 수 없습니다(계획서 §7.1). 서버 캐시가 2초라 15초면 충분합니다.
