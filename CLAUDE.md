@@ -37,7 +37,9 @@ Gradle commands the labs instruct the reader to run, once an `app/` project exis
 - Version numbers and the tech-stack summary appear in `README.md`, `docs/README.md`, plan §5.4, and the Step 2 version catalog. Change them together.
 - Labs use HTML blocks styled by `docs/assets/codelab.css`: `<div class="chips">` header, `<div class="callout tip|warn|danger|ok">`, `<div class="checkpoint">`, `<div class="pager">` footer. Match the existing pattern.
 - `docs/_sidebar.md` is the nav; `docs/index.html` holds the docsify config and a progress plugin keyed on `/labs/step-N` paths. `.nojekyll` must stay.
-- Plan work items are tracked inline as `DS-nnn` IDs (e.g. `DS-001` = confirm OkHttp call succeeds on a real device, the precondition for everything else). Reference them rather than inventing new tracking.
+- Plan work items are tracked inline as `DS-nnn` IDs (e.g. `DS-001` = the app's first `Schedule_Day` call returns `code "00"` on a real device). `DS-002a/b` (live start/finish schema) are done as of 2026-09-15. Reference existing IDs rather than inventing new tracking.
+- Consistency invariants that break silently: the canonical trap list is **8 items** and the count is repeated in Step 3 (chips, intro, danger callout) and plan §3.4/§8/§9 — add a trap in all of them; Step 1's fixture filenames must match the `load(...)` names in Step 3's `MapperTest`; plan section cross-references (`§3.4-N`, `§4.2`) shift when the trap list is renumbered — grep them after any renumbering.
+- The plan describes the data source as observed on 2026-09-14/15. Re-verify against the live API before "correcting" a documented quirk — several counter-intuitive facts (three mandatory query keys, WBC rows in `Schedule_Month`, `end_summary` arriving minutes after the final) were confirmed by scripted checks, not assumed.
 
 ## Architecture (as specified in the plan and labs)
 
@@ -69,6 +71,7 @@ Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (2
 - `state` is `a` scheduled / `i` in progress (observed 2026-09-15) / `e` final / `c` canceled; anything else → `UNKNOWN`. Canceled no-games keep partial scores and innings — drop them. Detail `game_result` is an inning label ("1회초") while live and `w`/`l`/`d` after — never derive the winner from it; compare totals.
 - `boxscore.home_score`/`away_score` are always 15 slots, `null` = not played (including an unplayed bottom 9th), `0` = zero runs. `parseInnings` trims to played innings; never render 15 columns.
 - `inning` code `bs{N}_{1|2}` = N회 초/말; labels come from parsing it, never invented.
+- On `i → e` the final score, R/H/E and `livecomment.comment_type == "fin"` arrive together, but `end_summary` (win/loss/save pitchers) and the list row's `detail.win_pitcher` fill **~7–8 minutes later**. Refetch once at the flip and once ~10 min later; never keep the 15s poll running on a `FINAL` game.
 - Stadium names are not normalized (23 spellings); cards use the home city from `KBO_TEAMS`, only the detail shows `stadium_name` verbatim.
 - `game_date` is a display string; use `game_timestamp` (epoch seconds) and convert to `Asia/Seoul`. `Schedule_Month` rows lack the timestamp — parse `yyyy-MM-dd HH:mm:ss` as Seoul.
 - Team IDs are wisetoto `team_info_seq` (315 SSG, 316 두산, 317 롯데, 318 삼성, 319 한화, 320 KIA, 321 키움, 322 LG, 2107 NC, 2674 KT). Season = year; there is no season ID. `schedule_info_seq` is a global cross-sport counter — never compute it, always take it from a list response.
@@ -77,6 +80,22 @@ Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (2
 ## wisetoto access notes
 
 curl, OkHttp and browsers all get 200; only a `Python-urllib` User-Agent gets 401. `/extra/notice` carries the app's forced-update signal (`update.next_action`) — check it at startup. The service ToS forbids commercial reuse without consent; keep the app personal-use and poll no faster than the official app (list every 4s; we use 20s). Do not add auth-bypass workarounds if the API starts gating; the plan says circuit-open.
+
+## Route source of truth
+
+Routes were taken from the 프로야구 LIVE app's Retrofit interface, not guessed. When you need a route or its query keys, read `baseball-decompiled/apktool/smali_classes8/net/adwhale/obfuscated/bt6.smali` (all `@GET/@POST` annotations) and the `data/repository/*RepositoryImpl.smali` files (the `@QueryMap` keys), both gitignored but present locally; re-pull with `adb shell pm path com.tionnet.android.baseball` + `adb pull` if missing. Brute-forcing route names failed for two days because the names are mixed-case.
+
+The full evaluation and re-verification log (SofaScore comparison, 71-check results, live capture) is `docs/wisetoto-api-eval.md` — gitignored, local only. The screen mockups live in a Claude design canvas (https://claude.ai/artifact/FVJb1Puyzw465AyJdPCTVG, 18 artboards dark+light); edit them through the `design` skill by re-seeding from working files, never by hand-editing the published page.
+
+## Git identity and pushing
+
+Commits are authored as `Namja <kjwoo810@gmail.com>` — set as repo-local `user.name`/`user.email`, which overrides the machine's global placen identity; keep it that way. The `origin` URL is HTTPS and the active `gh` login is a different account, so push over SSH with the NamJa key alias instead of switching accounts:
+
+```bash
+git push git@github-namja:NamJa/Diamondscore.git main
+```
+
+Commit messages are Korean, one summary line plus bullets.
 
 ## Do not commit
 
