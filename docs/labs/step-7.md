@@ -151,8 +151,8 @@ fun statusColor(g: GameSummary): Color =
 
 @Composable
 fun InfoTable(d: GameDetail) = Surface(
-    color = Color(0xFF12161C), shape = RoundedCornerShape(12.dp),
-    border = BorderStroke(1.dp, Color(0xFF232A34))) {
+    color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp),
+    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)) {
     // 공급되는 행만 그린다 — null이면 행 자체를 숨긴다 (계획서 §1.3 표시 원칙)
     val rows = listOfNotNull(
         d.venueName?.let { "경기장" to it },
@@ -176,7 +176,7 @@ private fun InfoRow(k: String, v: String, last: Boolean = false) {
         Text(k, color = DsColors.muted2, style = MaterialTheme.typography.bodyMedium)
         Text(v, style = MaterialTheme.typography.bodyMedium)
     }
-    if (!last) HorizontalDivider(color = Color(0xFF1C222A))
+    if (!last) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 @Composable
@@ -211,5 +211,5 @@ LaunchedEffect(d?.summary?.status) {
 
 <div class="pager">
 <a href="#/labs/step-6">← Step 6</a>
-<a href="#/labs/step-8">Step 8 · 순위·팀·즐겨찾기 →</a>
+<a href="#/labs/step-8">Step 8 · 순위·팀·선수·즐겨찾기 →</a>
 </div>

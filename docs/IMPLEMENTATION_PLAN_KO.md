@@ -35,13 +35,18 @@ Android 앱. 핵심 경험은 *"오늘 경기 상황을 3초 안에 파악하고
 
 | 우선순위 | 항목 |
 |---|---|
-| **P0 (wisetoto로 완결)** | 날짜별 경기 목록(예정/진행/종료/취소), 라이브 카드(총점+이닝 라벨+마지막 갱신), 경기 상세(이닝별 라인스코어·R/H/E·선발/승패 투수), 2026 정규시즌 순위, 팀 상세(구장·감독·최근/예정 경기), 팀 즐겨찾기, 오프라인 캐시, 다크·접근성·태블릿/폴더블 |
-| **P1 (데이터는 있음, 화면만 미구현)** | 현재 상황(볼카운트·주자·현재 투수/타자), 문자중계(투구 단위), 라인업·박스스코어, 선수 상세·개인 순위, 날씨, 경기 알림, 위젯, 공유 카드, 영어 UI |
+| **P0 (wisetoto로 완결)** | 날짜별 경기 목록(예정/진행/종료/취소), 라이브 카드(총점+이닝 라벨+마지막 갱신), 경기 상세(이닝별 라인스코어·R/H/E·선발/승패 투수), 2026 정규시즌 순위, 팀 상세(구장·감독·최근/예정 경기), **팀 선수단·구단 연혁**, **선수 상세(프로필·월별·최근 5경기)**, 팀 즐겨찾기, 오프라인 캐시, 다크·접근성·태블릿/폴더블 |
+| **P1 (데이터는 있음, 화면만 미구현)** | 현재 상황(볼카운트·주자·현재 투수/타자), 문자중계(투구 단위), 라인업·박스스코어, 개인 순위(부문별), 날씨, 경기 알림, 위젯, 공유 카드, 영어 UI |
 | **제외** | 베팅·예측·결제, 계정·채팅, 영상·오디오 중계, 자동 기사 생성, 허가 없는 데이터 수집/이미지 핫링크 |
 
 **P1을 MVP에서 뺀 근거**: 데이터는 전부 같은 API에 있고 진행 중 `detail`(볼카운트·주자·현재 투수/타자)이 실제로
 채워지는 것도 확인했다(§2.4). 뺀 이유는 **일정과 검증 범위**다 — 라이브 화면은 경기일에만 검증할 수 있어 득점 화면을
 먼저 닫는다. 자리는 미리 만들지 않는다 — 추정값으로 채우는 것은 표시 원칙(§1.3)에 위배된다.
+
+**선수 상세를 P1에서 P0으로 올린 근거(2026-09-18)**: `Team_Info`·`Player_Info` 스키마를 실측하고
+화면 설계를 확정했다(`DS-006`). 이 둘은 라이브와 달리 **경기일이 아니어도 검증된다** — 응답이 시즌 내내 같고
+서버 캐시가 1시간이라 언제든 재현 가능하다. 반면 볼카운트·문자중계·라인업은 진행 중 경기에서만 나오므로
+P1에 남는다. 개인 순위(`Sector_Rank`)는 데이터는 확인했으나 화면을 설계하지 않아 P1이다.
 
 **보조 소스는 없다.** 한 API가 목록·상세·순위·팀·선수를 다 주므로 두 소스의 경기 ID를 매칭할 일이 없다.
 SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(§12 부록 A) 교차 검증용으로도 쓰지 않는다.
@@ -67,11 +72,21 @@ SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(
 **순위**: 시즌(연도) 선택, 순위·경기수·**승-패-무**(`draw_count` 직접)·승률·게임차·연속. 득실차·진출권 배지는 공급되지 않으므로 컬럼을 두지 않고, 5위 뒤 진출선은 UI 고정 규칙으로 그린다.
 공급되지 않는 컬럼은 `-`가 아니라 컬럼 자체를 숨긴다. 동률은 앱에서 재계산하지 않고 공급자 순서를 따른다.
 
-**팀**: 10개 구단 목록 + 즐겨찾기. 팀 상세는 기본 정보·구장·감독·최근 5경기·다음 5경기. 로고 허가가
-없으면 문자 모노그램 + 팀 컬러 대체 자산.
+**팀**: 10개 구단 목록 + 즐겨찾기. 팀 상세는 기본 정보·구장·감독·최근/다음 경기 + **선수단 진입점**. 로고 허가가
+없으면 문자 모노그램 + 팀 컬러 대체 자산. 예정 경기 카드에 선발 투수를 쓰지 않는다 — `Schedule_Month`에 그 필드가 없다(§3.4-7).
 
-**선수(P1)**: 이름·등번호·포지션·투타·소속·월별 기록(`/extra/Player_Info`). 타자/투수 스키마 분리. 데이터는
-있으나 MVP 범위 밖.
+**팀 정보(선수단·연혁)**: `Team_Info`를 **투수·타자 두 번** 불러 얻은 선수단(등번호·이름·사진)과 구단 연혁.
+목록에 포지션이 없으므로 포수/내야/외야로 나누지 않고 투수·타자 2단만 만든다(§3.4-9). 등번호 100번대를
+육성선수로 묶는 것과 연혁에서 우승 횟수를 세는 것은 **앱 규칙**이며, 서버 값이 아님을 화면 주석에 남긴다.
+
+**선수 상세**: 프로필(등번호·포지션·투타·생년월일·신체·출신교·입단·계약금/연봉)과 월별 기록·최근 5경기
+(`/extra/Player_Info`). **`c_position`에 따라 표가 두 벌로 갈린다**(§3.4-10) — 투수는 승·패·세·홀·이닝·ERA,
+그 외는 타율·타수·안타·홈런·타점. 요약 타일은 선발/불펜 모두에서 읽히도록 ERA·승·이닝·탈삼진으로 고정하고
+세이브·홀드는 보조 줄로 내린다. 응답에 소속 팀이 없으므로 팀 색·팀명은 호출한 화면이 넘긴다.
+
+**팀 색과 앱 액센트**: 두 계열을 섞지 않는다. 구단 색(`teamColor`)은 엠블럼·컬러 바 같은 **면**에, 글자용
+틴트(`teamTint`)는 팀명 라벨·등번호에, 앱 액센트(`primary`)는 라이브·탭·링크·대표 기록에 쓴다. 구단 원색을
+글자에 그대로 쓰면 두산(`#232A63`)은 다크에서, KIA(`#EA0029`)는 라이트에서 대비가 무너진다.
 
 **즐겨찾기·설정**: 즐겨찾는 팀 목록, 테마(시스템/라이트/다크), 데이터 출처(wisetoto)·개인정보·
 오픈소스 라이선스 표기. 알림은 P1.
@@ -213,9 +228,11 @@ SofaScore 시절의 "득점 전용(runs-only)" 제약이 사라졌다. **제공 
 | 총점, 이닝별 득점(15칸, 연장 포함) | 현재 투수/타자, 다음 타자 | 변경 감지 타임스탬프 |
 | R/H/E/B | 라인업·박스스코어(`/extra/lineup`) | 시즌 목록(연도로 대체) |
 | 경기 상태·이닝 코드 | 문자중계 투구 단위(`/extra/Live_comment`, 약 90일 보존) | 진출권 배지 |
-| 선발·승리·패전·세이브 투수 | 선수 프로필·기록(`/extra/Player_Info`) | |
-| 순위(승·패·무·승률·게임차·연속) | 개인 순위 타자 8부문·투수 6부문(`/rank/Sector_Rank`) | |
-| 구단 정보·감독·한국어 팀명·로고 | 날씨(`/extra/Weather_Info`), 중계 링크 | |
+| 선발·승리·패전·세이브 투수 | 개인 순위 타자 8부문·투수 6부문(`/rank/Sector_Rank?year=`) | **선수 목록의 포지션** (상세에만 있음) |
+| 순위(승·패·무·승률·게임차·연속) | 날씨(`/extra/Weather_Info`), 중계 링크 | **선수의 소속 팀** (Player_Info에 없음) |
+| 구단 정보·감독·연혁·한국어 팀명·로고 | | 육성선수 구분 (등번호로 추정) |
+| 선수단 명단 — 투수/타자 2회 조회(`Team_Info&player_position=`) | | 우승 횟수 (연혁 문자열을 셈) |
+| 선수 프로필·월별 기록·최근 5경기(`/extra/Player_Info/{seq}`) | | |
 
 ### 2.4 라이브 스키마 — 2026-09-15 18:31 KST 실측 (경기 시작 직후)
 
@@ -258,13 +275,14 @@ Base URL: `https://bsrest.wisetoto.com/` · 공통 쿼리 `os=a&version=4.1.3&la
 | 2 | 월별 일정(프리페치) | `GET /live/Schedule_Month/{yyyyMM}` (`&team_info_seq=&home_away=h\|a` 선택) | 34 KB, ~110~130행 (비KBO 포함) |
 | 3 | 경기 상세(라인스코어·R/H/E·투수 요약·진행 상황) | `GET /live/schedule/{seq}` | 5~8 KB |
 | 4 | 순위 | `GET /rank/League_Rank?year={YYYY}` | 3 KB, 10 rows |
-| 5 | 팀 정보(정식 명칭·홈구장·감독·선수 명단) | `GET /extra/Team_Info?team_info_seq={id}` | 8 KB |
-| 6 | 팀 목록 | `GET /extra/Team_Select` | 1 KB (앱은 로컬 표를 쓰므로 검증용) |
-| 7 | 앱 부트스트랩(버전·차단 신호) | `GET /extra/notice` | 1 KB |
-| 8 | 팀 로고 | `storage.wisetoto.com/data/sports_db/team_{id}.png` | 이미지 |
+| 5 | 팀 정보(정식 명칭·홈구장·감독·연혁) + **선수단** | `GET /extra/Team_Info?team_info_seq={id}&player_position={0\|1}` | 8 KB · **팀당 2회**(0=투수, 1=타자) |
+| 6 | 선수 상세(프로필·월별·최근 5경기) | `GET /extra/Player_Info/{player_info_seq}` | 3 KB |
+| 7 | 팀 목록 | `GET /extra/Team_Select` | 1 KB (앱은 로컬 표를 쓰므로 검증용) |
+| 8 | 앱 부트스트랩(버전·차단 신호) | `GET /extra/notice` | 1 KB |
+| 9 | 팀 로고 · 선수 사진 | `storage.wisetoto.com/data/sports_db/{team_,player_}…` | 이미지 — **응답 URL이 `http://`라 `https`로 승격해 쓴다** |
 | P1 | 라인업·박스스코어 | `GET /extra/lineup/{seq}` | 7 KB |
 | P1 | 문자중계 | `GET /extra/Live_comment/{seq}` | 30~60 KB |
-| P1 | 선수·개인 순위·날씨 | `GET /extra/Player_Info/{seq}` · `/rank/Sector_Rank?year=` · `/extra/Weather_Info/{yyyyMMdd}` | — |
+| P1 | 개인 순위·날씨 | `/rank/Sector_Rank?year=` (타자 8부문·투수 6부문) · `/extra/Weather_Info/{yyyyMMdd}` | 20 KB / — |
 
 전부 `GET`이며 인증이 없다. 회원·커뮤니티·이벤트 경로(80여 개)는 이 앱과 무관하다.
 
@@ -357,9 +375,45 @@ Base URL: `https://bsrest.wisetoto.com/` · 공통 쿼리 `os=a&version=4.1.3&la
   "straight": "6승" }
 ```
 
+**팀 `/extra/Team_Info?team_info_seq=316&player_position=0` → `data.team_info`** (2026-09-18 실측)
+
+```json
+{ "team_detail": {
+    "name": "두산 베어스", "en_simple_name": "Doosan Bears",
+    "stadium_name": "서울 잠실야구장", "team_info_seq": "316", "director": "김원형",
+    "team_history": [ "1982년 l \"OB 베어스\" 창단", "1999년 l \"두산 베어스\" 로 구단명 변경", … ]
+  },                                                 // ↑ 구분자가 파이프가 아니라 소문자 l
+  "player_list": [ { "seq": "923961", "name": "곽빈", "c_number": "47",
+                     "img": "http://storage.wisetoto.com/data/sports_db/player_316_….jpg" }, … ] }
+```
+`player_position=0`이면 투수만(두산 43명), `0`이 아니면 타자만(47명) 온다. **생략하면 투수만 온다.**
+`team_detail`은 두 응답에 동일하게 실린다. 선수 행의 키는 넷뿐이고 **포지션이 없다**.
+
+**선수 `/extra/Player_Info/{seq}` → `data.player_info`** (2026-09-18 실측)
+
+```json
+{ "player_detail": {
+    "name": "곽빈", "c_position": "투수", "p_position": "우투우타", "c_number": "47",
+    "img_s": "http://…_s.jpg", "birth_day": "1999-05-28", "height": "187", "weight": "95",
+    "school": "학동초-자양중-배명고", "join_year": "2018", "n_ranking": "18 두산 1차",
+    "join_down_payment": "30000만원", "income": "30500만원", "national": "대한민국" },
+  "record": {
+    "month": [ { "month": "3", "win": "1", "lose": "0", "save": "0", "hold": "0",
+                 "inning": "8", "era": "4.50", "so": "14", "h": "8", "hr": "2", … },
+               { "month": "13", … } ],        // "13" = 시즌 합계. 월 합과 값이 다르다
+    "previous5": [ { "game_date": "20260909", "matchteamname": "SSG",
+                     "ip": "7.0", "np": "108", "h": "5", "so": "9", "er": "1", "era": "2.26" },
+                   { "game_date": "20260822", "matchteamname": "롯데",
+                     "ip": null, "np": null, … } ] } }   // 기록 없이 로그만 오는 행
+```
+`c_position`이 `"투수"`면 위 스키마, 그 외(`포수`/`내야수`/`외야수`)면
+`month[] = {avg, games, ab, h, 2b, 3b, hr, rbi, sb, bb, so}` · `previous5[] = {bo, ab, h, rbi, hr, gidp, hbp, sb, avg, …}`로
+**통째로 바뀐다.** 같은 키가 다른 뜻인 칸도 있다 — 투수의 `h`는 피안타, 타자의 `h`는 안타다.
+`previous5`의 `era`/`avg`는 그 경기 성적이 아니라 **그 시점 누적값**이고, `player_detail`에 **소속 팀 필드가 없다.**
+
 ### 3.4 반드시 처리해야 하는 함정 (실측 중 발견)
 
-이 8개는 그냥 매핑하면 확실히 버그가 된다.
+이 12개는 그냥 매핑하면 확실히 버그가 된다. ①~⑧은 경기·순위(2026-09-14~15 실측), ⑨~⑫는 팀·선수(2026-09-18 실측)다.
 
 1. **경로가 대소문자를 구분하고 날짜 형식이 하나뿐이다.** `Schedule_Day`/`Schedule_Month`/`League_Rank`/`Team_Info`는
    대문자 그대로, 날짜는 `yyyyMMdd`·`yyyyMM`. 틀리면 404 또는 `code 01`. 공통 쿼리 `os`·`version`·`lang` 중 하나라도 없어도 `01`.
@@ -376,19 +430,45 @@ Base URL: `https://bsrest.wisetoto.com/` · 공통 쿼리 `os=a&version=4.1.3&la
 5. **라인스코어는 15칸 고정 배열이고 미진행이 `null`이다.** `0`은 0점, `null`은 안 한 이닝. 9회말 미실시(홈 승)도
    `null`. "진행된 이닝 수"는 `null`이 아닌 마지막 칸 또는 `inning` 코드로 구한다. 15칸을 그대로 그리면 안 된다.
 
-6. **구장명 표기가 비정규다.** 잠실만 `서울잠실야구장`/`서울 잠실야구장`, 사직 3종 등 23가지. 카드의 구장 표시는
-   `stadium_name`이 아니라 **앱 팀 표의 홈 도시**로 한다. 상세 화면에서만 원문을 그대로 보여준다.
+6. **구장명 표기가 비정규다.** 잠실만 `서울잠실야구장`/`서울 잠실야구장`, 사직 3종 등 23가지. **같은 달 안에서도 흔들린다**
+   (2026-09 일정에 두 표기가 함께 있다). 카드의 구장 표시는 `stadium_name`이 아니라 **앱 팀 표의 홈 도시**로 한다.
+   상세 화면에서만 원문을 그대로 보여준다.
 
 7. **`game_date`는 표시 문자열이고 변경 감지 필드가 없다.** 상세의 `game_date`는 `"09/10(목) 18:30"`(연도 없음).
    시각은 `game_timestamp`(초)만 쓴다. SofaScore의 `changeTimestamp` 같은 델타 필드가 없으므로 **DB 쓰기 스킵은
-   기존 행과의 동등 비교**로 한다(§6).
+   기존 행과의 동등 비교**로 한다(§6). `Schedule_Month` 행에는 `game_timestamp`도 **`home_pitcher`·`away_pitcher`도 없다** —
+   프리페치만 된 미래 경기는 선발이 `null`이고, 당일 `Schedule_Day`로 채워진다. 여기서 "선발 미정"을 지어내지 않는다.
 
 8. **목록에 KBO가 아닌 경기가 섞여 있다.** WBC·시범경기·올스타전이 `Schedule_Day`/`Schedule_Month`에 같이 온다(§3.2). 행에
    리그 필드가 없으니 **양 팀 `team_info_seq`가 KBO 10구단이고 날짜가 `league_rank.start` 이후**인 행만 받는다. 이 필터가
    없으면 3월 목록에 "한국 : 체코"가 뜨고 순위 계산·팀 일정이 시범경기로 오염된다.
 
+9. **선수단은 한 번에 오지 않고, 등번호는 키가 아니다.** `Team_Info`는 `player_position`(0=투수, 그 외=타자)으로
+   **두 번** 불러야 전원이 온다(생략하면 투수만). 목록 행의 키는 `seq`·`name`·`c_number`·`img` 넷뿐이라
+   **포지션이 없다** — 포수/내야/외야로 나누려면 선수마다 상세를 쳐야 하므로 투수·타자 2단으로만 만든다.
+   `c_number`는 문자열이라 그대로 정렬하면 `1, 10, 101, 11 …`이 되고, **팀 안에서 중복된다**(두산 투수 48번이 2명).
+   목록 `key`는 반드시 `seq`. 육성선수 구분은 서버가 주지 않아 등번호 100번대라는 **앱 규칙**으로 대신한다.
+   `team_history` 구분자는 파이프가 아니라 **소문자 `l`**(`"1982년 l …"`)이고, 사진 URL은 `http://`라 `https`로 승격해야
+   Android 기본 설정에서 로드된다.
+
+10. **선수 기록 스키마가 `c_position`으로 갈리고, 합계가 월 목록에 섞여 온다.** 라우트는 하나인데 투수면
+    승·패·세·홀·이닝·ERA, 그 외면 타율·타수·안타·홈런·타점이다. 같은 키가 다른 뜻인 칸도 있다(투수 `h`=피안타, 타자 `h`=안타).
+    **도메인에서 sealed로 갈라** 화면이 섞어 쓰지 못하게 한다. `record.month`의 `month:"13"`은 13월이 아니라 **시즌 합계**이고,
+    **월별 행의 합과 값이 다르다**(양의지 경기 수 월 합 130 vs 합계 123, 곽빈 이닝 월 합 159⅔ vs 합계 155).
+    합계는 합계 행을 그대로 쓰고 앱에서 더해 만들지 않는다. `player_detail`에 **소속 팀이 없으므로** 팀 색·팀명은 호출자가 넘긴다.
+
+11. **이닝 표기가 두 가지다.** 월별 `inning`은 `"29 2/3"` 같은 **대분수 문자열**, 최근 경기 `ip`는 `"0.2"`처럼
+    **소수점 뒤가 아웃 카운트**다. `"0.2"`는 0.2이닝이 아니라 **⅔이닝**이다. 숫자로 파싱해 더하면 조용히 틀린다 —
+    표기별 파서를 따로 두고 표시 문자열로만 다룬다.
+
+12. **최근 경기의 `era`·`avg`는 누적값이고, 전 필드가 `null`인 행이 섞인다.** `previous5`의 `era`는 그 경기 자책점이
+    아니라 **그 경기 직후의 시즌 누적 ERA**다(가장 최근 행 = 시즌 합계 ERA). 컬럼 이름에 "누적"을 박는다.
+    또 기록 없이 로그만 오는 행이 있다(곽빈 2026-08-22 롯데전 — `game_date`·`matchteamname`만 있고 나머지 전부 `null`).
+    `0`으로 메우지 말고 `—`로 그린다.
+
 추가 주의: `Schedule_Day`의 `league_rank`는 조회 날짜와 무관하게 **현재 시즌** 메타만 준다(그래서 시즌 시작일 소스로 쓴다). `player_count`는 선수
-수가 아니라 경기 수다. `team_inf_seq`·`team_ifno_seq`(Team_Select) 오타는 서버 필드명 그대로 `@SerialName`으로 받는다.
+수가 아니라 경기 수다. `team_inf_seq`·`team_ifno_seq`(Team_Select)·`rib`(Sector_Rank의 타점) 오타는 서버 필드명 그대로 `@SerialName`으로 받는다.
+`/extra/notice`는 예외적으로 대소문자를 가리지 않지만(`/extra/Notice`도 200), 나머지 라우트는 ①대로 대소문자를 구분한다.
 
 ---
 
@@ -432,9 +512,60 @@ data class Standing(
     val winPct: Double, val gamesBehind: Double,
     val streak: String?,                    // straight ("6승")
 )
+
+// ── 팀 (Team_Info 2회) ──
+data class RosterPlayer(
+    val id: Long,                 // player_info_seq — 등번호는 겹치므로 키가 못 된다(§3.4-9)
+    val name: String, val number: Int?, val photoUrl: String?,   // photoUrl은 https로 승격된 값
+    val isDevelopment: Boolean,   // 등번호 100 이상 — 앱 규칙
+)
+data class TeamHistoryEntry(val year: Int?, val text: String)    // "1982년 l …" 을 쪼갠 것
+
+data class TeamDetail(           // 팀 상세와 팀 정보(선수단) 두 화면이 공유한다
+    val team: TeamRef, val nameEn: String?,
+    val stadium: String?, val manager: String?,
+    val history: List<TeamHistoryEntry>,
+    val pitchers: List<RosterPlayer>, val batters: List<RosterPlayer>,
+    val recent: List<GameSummary>, val upcoming: List<GameSummary>,
+)
+
+// ── 선수 (Player_Info) ──
+enum class PlayerKind { PITCHER, BATTER }
+
+data class PlayerProfile(
+    val id: Long, val name: String, val number: Int?, val photoUrl: String?,
+    val kind: PlayerKind, val position: String?, val bats: String?,
+    val birthDay: LocalDate?, val heightCm: Int?, val weightKg: Int?,
+    val school: String?, val joinYear: Int?, val draft: String?,
+    val signingBonus: String?, val salary: String?, val nationality: String?,
+)   // 소속 팀은 응답에 없다 — 화면이 teamId를 함께 들고 온다(§3.4-10)
+
+/** month = null 이면 그 달이 아니라 시즌 합계(서버의 "13"). 월 합으로 만들지 않는다. */
+data class BattingRow(val month: Int?, val avg: String, val games: Int?, val atBats: Int?,
+                      val hits: Int?, val homeRuns: Int?, val rbi: Int?)
+data class PitchingRow(val month: Int?, val era: String, val wins: Int?, val losses: Int?,
+                       val saves: Int?, val holds: Int?, val innings: String?, val strikeOuts: Int?)
+
+/** cumulative* 는 그 경기 성적이 아니라 그 시점 누적값(§3.4-12). 전 필드가 null인 행이 섞인다. */
+data class BattingGame(val date: LocalDate?, val opponent: String, val order: String?,
+                       val atBats: Int?, val hits: Int?, val homeRuns: Int?, val rbi: Int?,
+                       val cumulativeAvg: String?)
+data class PitchingGame(val date: LocalDate?, val opponent: String, val innings: String?,
+                        val pitches: Int?, val hits: Int?, val strikeOuts: Int?,
+                        val earnedRuns: Int?, val cumulativeEra: String?)
+
+sealed interface PlayerRecord {   // 한 라우트가 두 스키마를 주므로 when을 강제한다
+    data class Batting(val months: List<BattingRow>, val recent: List<BattingGame>) : PlayerRecord
+    data class Pitching(val months: List<PitchingRow>, val recent: List<PitchingGame>) : PlayerRecord
+}
+
+data class PlayerDetail(val profile: PlayerProfile, val record: PlayerRecord)
 ```
 
 `POSTPONED`·`SUSPENDED`는 wisetoto가 구분하지 않아 현재 매핑되지 않는다(우천 취소도 `c`). 표본이 잡힐 때까지 enum만 남긴다.
+
+`PlayerRecord`만 sealed인 이유는 §3.4-10이다 — 넓적한 nullable data class 하나로 받으면 투수 표에 타율을
+그리는 실수가 컴파일을 통과한다. 이 타입들은 Room에 저장하지 않는다(서버 캐시 1시간, 화면 진입 시 조회).
 
 ### 4.1 상태 매핑
 
@@ -503,15 +634,15 @@ com.diamondscore
 ├─ core/
 │   ├─ common/          time, KboTeams(순수 표), Result — Compose·Android 없음
 │   ├─ navigation/      DsNavKeys(NavKey) — 순수 Kotlin + kotlinx.serialization
-│   ├─ designsystem/    Color, Type, Theme, TeamColors — 도메인을 모른다
-│   └─ ui/              GameCard, LineScoreTable, StandingRow, States, DsHelpers — 도메인은 알고 화면은 모른다
+│   ├─ designsystem/    Color, Type, Theme, TeamColors(teamColor·teamTint) — 도메인을 모른다
+│   └─ ui/              GameCard, LineScoreTable, StandingRow, States, PlayerParts, DsHelpers — 도메인은 알고 화면은 모른다
 ├─ data/
 │   ├─ remote/          WisetotoApi, dto/, mapper/, di/NetworkModule
 │   ├─ local/           entity/, dao/, mapper/, di/DatabaseModule, DiamondScoreDatabase
 │   ├─ repository/      Games, Standings, Teams, Favorites, SettingsStore
 │   └─ sync/            PrefetchWorker
-├─ domain/model/        GameSummary, GameDetail, Standing, TeamDetail, TeamRef …
-└─ feature/             games/, gamedetail/, standings/, teams/, favorites/, settings/
+├─ domain/model/        GameSummary, GameDetail, Standing, TeamDetail, PlayerDetail, TeamRef …
+└─ feature/             games/, gamedetail/, standings/, teams/, players/, favorites/, settings/
 ```
 
 규칙 2개만 지킨다:
@@ -733,17 +864,21 @@ class LivePoller<T>(
 - [x] `DS-002b` **라이브 종료 관측 (2026-09-15 21:24~21:32)** — `i → e`와 최종 점수·RHEB는 동시, `end_summary`·목록 `detail.win_pitcher`는 **7~8분 뒤** 채워짐(§2.4·§7.3). 연장 경기의 라이브 표현은 미관측(추가 경기일에 확인)
 - [ ] `DS-003` `/extra/notice` 부트스트랩 응답의 `update.next_action`·`server.next_action` 처리 — 강제 업데이트/차단 신호를 앱 시작 시 확인
 - [ ] `DS-004` 프리페치 확인 — `Schedule_Month` 3~11월 890행 중 KBO 필터(§3.4-8) 통과 782행이 시즌 경기 수(정규 720 + 취소 70)에 맞는지, WBC·시범경기·올스타전이 걸러지는지
-- [ ] `DS-005` fixture 저장 → `app/src/test/resources/fixtures/` (예정/라이브/종료/연장 11회/취소·노게임 각 1건 이상)
+- [x] `DS-006` **팀·선수 스키마 실측 (2026-09-18)** — `Team_Info`의 `player_position` 필수(0=투수/그 외=타자), 목록에 포지션 없음,
+  등번호 중복(두산 48번 2명), `team_history` 구분자 소문자 `l`, `Player_Info`의 `c_position` 기반 스키마 분기,
+  `month:"13"`=시즌 합계(월 합과 불일치), 이닝 표기 2종, `previous5`의 누적 ERA·전 필드 null 행(§3.4-9~12)
+- [ ] `DS-005` fixture 저장 → `app/src/test/resources/fixtures/` (예정/라이브/종료/연장 11회/취소·노게임 각 1건 이상 +
+  `team_info_pitchers`·`team_info_batters`·`player_batter`·`player_pitcher` 4건, 총 12건)
 
-**산출물**: fixture 세트(Step 1) + `DS-002` 관측 기록.
-**완료 조건**: §3.4의 함정 8개 + `DS-002` 신규 발견 항목이 전부 fixture로 고정됨.
+**산출물**: fixture 세트(Step 1) + `DS-002`·`DS-006` 관측 기록.
+**완료 조건**: §3.4의 함정 12개 + `DS-002` 신규 발견 항목이 전부 fixture로 고정됨.
 
 ### Step 2 — 프로젝트 부트스트랩 (0.5일)
 
 - [ ] `DS-010` Compose 프로젝트, version catalog(§5.4), `compileSdk 36` / `minSdk 26`, AGP built-in Kotlin(§5.3)
 - [ ] `DS-011` Hilt(KSP2), Retrofit 3/OkHttp/kotlinx.serialization, Room(KSP2), Coil 3, **Navigation 3**
-- [ ] `DS-012` Material 3 테마 + **10개 구단 자체 컬러 토큰**(§2.2) + 한국어 팀명 리소스(§2.2) — 팀명은 `core/common`, 컬러는 `core/designsystem`으로 분리(§5.1)
-- [ ] `DS-013` `core/navigation`에 `NavKey` 7개 정의(`@Serializable`)
+- [ ] `DS-012` Material 3 테마 + **10개 구단 자체 컬러 토큰**(§2.2) + 한국어 팀명 리소스(§2.2) — 팀명은 `core/common`, 컬러는 `core/designsystem`으로 분리(§5.1). 글자용 `teamTint`와 앱 액센트의 역할을 분리(§1.3)
+- [ ] `DS-013` `core/navigation`에 `NavKey` 9개 정의(`@Serializable`) — 탭 4 + 인자 화면 4(경기·팀·선수단·선수) + 설정
 - [ ] `DS-014` CI: `assembleDebug` + unit test + lint
 
 ### Step 3 — 네트워크·매핑 계층 (1.5일)
@@ -751,10 +886,11 @@ class LivePoller<T>(
 - [ ] `DS-020` DTO 정의 — 공통 `Envelope<T>`, 문자열 수치는 `String`으로, `boxscore`는 `List<Int?>`
 - [ ] `DS-021` `WisetotoApi` + 공통 쿼리/UA 인터셉터 + 최소간격 인터셉터, `Envelope.body()`로 `code` 검사
 - [ ] `DS-022` 매퍼 — 상태(§4.1), 이닝 라벨, 라인스코어(§4.2), 취소 점수 제거(§3.4-3), 문자열 수치(§3.4-2)
-- [ ] `DS-023` **매퍼 단위 테스트 — §3.4 함정 8개를 각각 독립 테스트 케이스로.** 특히 연장 11회 득점이 라인스코어에 나타나는지, 취소 경기 점수가 `null`인지, 3월 목록에서 WBC·시범경기가 걸러지는지
-- [ ] `DS-024` MockWebServer — 타임아웃 / 500 / 깨진 JSON / 빈 배열 / `code:"01"` 봉투 / 미지의 `state`
+- [ ] `DS-025` 팀·선수 매퍼 — 선수단 정렬·중복 등번호·`https` 승격·연혁 파싱(§3.4-9), `c_position` 분기·합계 행 분리(§3.4-10), 이닝 표기 2종(§3.4-11), 누적값·null 행(§3.4-12)
+- [ ] `DS-023` **매퍼 단위 테스트 — §3.4 함정 12개를 각각 독립 테스트 케이스로.** 특히 연장 11회 득점이 라인스코어에 나타나는지, 취소 경기 점수가 `null`인지, 3월 목록에서 WBC·시범경기가 걸러지는지, 타자/투수 record가 섞이지 않는지, `ip:"0.2"`가 ⅔로 읽히는지
+- [ ] `DS-024` MockWebServer — 타임아웃 / 500 / 깨진 JSON / 빈 배열 / `code:"01"` 봉투 / 미지의 `state` / `player_position` 한쪽만 실패
 
-**완료 조건**: fixture만으로 매퍼 branch coverage 90%+. **함정 8개 테스트 없이 다음 단계로 넘어가지 않는다.**
+**완료 조건**: fixture만으로 매퍼 branch coverage 90%+. **함정 12개 테스트 없이 다음 단계로 넘어가지 않는다.**
 
 ### Step 4 — Room + Repository + 시즌 프리페치 (2일)
 
@@ -782,15 +918,19 @@ class LivePoller<T>(
 - [ ] `DS-051` **라인스코어 테이블** — 동적 이닝, 연장 가로 스크롤, 미진행 이닝 구분
 - [ ] `DS-052` 구장·안타·실책·승/패/세이브 투수 정보 섹션 (공급되는 것만)
 - [ ] `DS-053` 상세 폴링 + `FINAL` 확정 조회(§7.3)
-- [ ] `DS-054` 볼카운트·주자·라인업 영역을 **만들지 않음**을 코드 리뷰에서 확인(§1.2, `DS-002` 이후 P1)
+- [ ] `DS-054` 볼카운트·주자·라인업·문자중계 영역을 **만들지 않음**을 코드 리뷰에서 확인(§1.2, `DS-002` 이후 P1)
 
 **완료 조건**: 9이닝 / 연장 / 취소 / 미진행 fixture 골든 시나리오 통과.
 
-### Step 7 — 순위·팀·즐겨찾기 (1.5일)
+### Step 7 — 순위·팀·선수·즐겨찾기 (2일)
 
 - [ ] `DS-060` 순위 화면 — 승-패-무, 승률, 게임차, 연속(`straight`); 5위 뒤 진출선은 UI 고정
-- [ ] `DS-061` 팀 상세 — 구장·감독(`Team_Info`), 최근/예정 경기는 Room(`observeByTeam`)
+- [ ] `DS-061` 팀 상세 — 구장·감독·연혁(`Team_Info` 2회), 최근/예정 경기는 Room(`observeByTeam`), 선수단 진입점
+- [ ] `DS-063` 팀 정보(선수단·연혁) — 투수/타자 탭, 육성선수 구분, `key`는 `seq`(§3.4-9)
+- [ ] `DS-064` 선수 상세 — `PlayerRecord` 분기로 표 두 벌, 합계 행 강조, `null`은 `—`(§3.4-10~12)
 - [ ] `DS-062` 팀 즐겨찾기 → 목록 상단 고정
+
+**완료 조건**: 두산(네이비)과 KIA(레드)를 번갈아 열어 팀 색만 바뀌고 앱 액센트는 유지되며, 라이트 테마에서도 전부 읽힌다.
 
 ### Step 8 — 마감 (1.5일)
 
@@ -801,7 +941,8 @@ class LivePoller<T>(
 - [ ] `DS-074` Baseline Profile, 30분 라이브 배터리·메모리 측정
 - [ ] `DS-075` R8 릴리스 빌드 검증
 
-**총 예상: 10~11일** (1인). 단 `DS-002`와 Step 5·6 검증이 실제 경기일에 묶이므로 캘린더 기준 2~3주.
+**총 예상: 11~12일** (1인). 단 `DS-002`와 Step 5·6 검증이 실제 경기일에 묶이므로 캘린더 기준 2~3주.
+팀·선수 화면(Step 7)은 경기일과 무관하게 검증되므로 라이브 검증을 기다리는 동안 끼워 넣을 수 있다.
 
 ### 착수 순서 — 지금 시작할 3가지
 
@@ -817,9 +958,9 @@ class LivePoller<T>(
 
 | 층 | 대상 | 도구 |
 |---|---|---|
-| 단위 | 매퍼(§3.4 함정 8종), 상태 매핑, 이닝 코드·15칸 라인스코어 파싱, 문자열 수치, KBO 필터, `LivePoller` 간격 | JUnit, coroutines-test, Turbine |
+| 단위 | 매퍼(§3.4 함정 12종), 상태 매핑, 이닝 코드·15칸 라인스코어 파싱, 문자열 수치, KBO 필터, 선수단 정렬·중복 등번호, `c_position` 스키마 분기, 이닝 표기 2종, `LivePoller` 간격 | JUnit, coroutines-test, Turbine |
 | 통합 | 월 프리페치 순회, Repository 캐시/오프라인/트랜잭션/쓰기 스킵, `code 01` 봉투 처리, Room 마이그레이션 | MockWebServer, Room testing |
-| UI | 화면별 loading/content/empty/error, 라인스코어 연장 렌더링, 원정-홈 표시 순서 | Compose UI Test |
+| UI | 화면별 loading/content/empty/error, 라인스코어 연장 렌더링, 원정-홈 표시 순서, 선수단 중복 등번호에서 `key` 충돌 없음, 타자/투수 표 분기 | Compose UI Test |
 | 시각 | compact/medium/expanded × light/dark × 글꼴 1.0/2.0 | screenshot test |
 | 경계 | 위 4개 규칙을 import 기준으로 검사 | 승격 후에는 모듈 의존 그래프가 대신 강제한다 |
 | 수동 | 경기일 라이브 검증 | 실기기 |
@@ -860,7 +1001,9 @@ class LivePoller<T>(
   - `Dto`·`Entity` 타입 이름이 `data/` 밖 파일에 등장하지 않는다.
   - `core/designsystem`에 `domain.model` import가 없고, `data/`에 `androidx.compose` import가 없다.
   - `feature/x`가 `feature/y`를 import하지 않는다.
-- 정상·결측·오류·오프라인 테스트가 있다. §3.4 함정에 걸리는 로직은 독립 테스트로 고정한다.
+- 정상·결측·오류·오프라인 테스트가 있다. §3.4 함정 12개에 걸리는 로직은 독립 테스트로 고정한다.
+- 서버가 주지 않는 값을 앱이 만들어 넣지 않았다 — 육성선수 구분·우승 횟수처럼 **앱 규칙으로 만든 값은 코드에 그렇게 적혀 있다.**
+- 색 상수를 화면에 박지 않았다. 배경·라인·본문은 `colorScheme`, 의미색은 `DsColors`, 구단 색은 `teamColor`/`teamTint`만 쓴다.
 - compact와 expanded, light/dark, 200% font에서 검증했다.
 - TalkBack label, focus order, 48dp touch target을 확인했다.
 - 로그/분석에 원문 응답·개인정보가 없다.

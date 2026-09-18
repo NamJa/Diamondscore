@@ -12,7 +12,7 @@
   - [Step 5 · 공통 컴포넌트](labs/step-5.md)
   - [Step 6 · 경기 목록](labs/step-6.md)
   - [Step 7 · 경기 상세](labs/step-7.md)
-  - [Step 8 · 순위·팀·즐겨찾기](labs/step-8.md)
+  - [Step 8 · 순위·팀·선수·즐겨찾기](labs/step-8.md)
   - [Step 9 · 마감·릴리스](labs/step-9.md)
 
 - **참고**

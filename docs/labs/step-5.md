@@ -26,7 +26,7 @@
 
 <div class="callout tip"><span class="t">코드에 나오는 작은 헬퍼들</span>
 <code>DsIcon</code>·<code>DsTabIcon</code>·<code>CenterColumn</code>·<code>TopBar</code>·<code>HeaderCell</code>·<code>TeamCell</code>·
-<code>TotalCell</code> 등 공용 조각의 <strong>완전한 코드는 §6</strong>에, Preview용 <code>sampleLive</code> 등 <strong>샘플 데이터는 §7</strong>에 있습니다. 먼저 §6·§7을 만들어 두고 위 컴포넌트를 작성하면 매끄럽습니다.
+<code>TotalCell</code> 등 공용 조각의 <strong>완전한 코드는 §6</strong>에, Preview용 <code>sampleLive</code> 등 <strong>샘플 데이터는 §7</strong>에, Step 8이 쓰는 <code>PlayerAvatar</code>·<code>StatTiles</code>·<code>StatTable</code>은 <strong>§8</strong>에 있습니다. 먼저 §6·§7을 만들어 두고 위 컴포넌트를 작성하면 매끄럽습니다.
 </div>
 
 ## 1. 하단 네비게이션 (DsBottomBar)
@@ -290,13 +290,18 @@ fun StandingRow(s: Standing, onClick: () -> Unit) = Column {
     }
 }
 
+/** 가운데 라벨이 있는 구분선. 진출선·육성선수 구분선(Step 8)이 같이 쓴다. */
 @Composable
-fun PlayoffDivider() = Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+fun LabeledDivider(text: String, color: Color) = Row(
+    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
     verticalAlignment = Alignment.CenterVertically) {
-    HorizontalDivider(Modifier.weight(1f), color = DsColors.live.copy(alpha = .3f))
-    Text(" POSTSEASON ", color = DsColors.live, style = Display.copy(fontSize = 13.sp))
-    HorizontalDivider(Modifier.weight(1f), color = DsColors.live.copy(alpha = .3f))
+    HorizontalDivider(Modifier.weight(1f), color = color.copy(alpha = .3f))
+    Text(" $text ", color = color, style = Display.copy(fontSize = 13.sp))
+    HorizontalDivider(Modifier.weight(1f), color = color.copy(alpha = .3f))
 }
+
+@Composable
+fun PlayoffDivider() = LabeledDivider("POSTSEASON", DsColors.live)
 ```
 
 ## 5. 상태 컴포넌트 (로딩·빈 날짜·오류·오프라인)
@@ -313,13 +318,13 @@ fun LoadingCards(count: Int = 4) = Column(
         .5f, .9f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "a")
     repeat(count) {
         Box(Modifier.fillMaxWidth().height(84.dp).clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF1A1F27).copy(alpha = alpha)))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)))
     }
 }
 
 @Composable
 fun EmptyDay(onNearest: () -> Unit) = CenterColumn {
-    DsIcon(Icons.Outlined.CalendarMonth, size = 52.dp, tint = Color(0xFF3A4250))
+    DsIcon(Icons.Outlined.CalendarMonth, size = 52.dp, tint = DsColors.muted2)
     Text("이 날은 경기가 없어요", style = MaterialTheme.typography.bodyLarge)
     Text("월요일은 KBO 휴식일", color = DsColors.muted2, style = MaterialTheme.typography.labelMedium)
     OutlinedButton(onClick = onNearest) { Text("가장 가까운 경기일로") }
@@ -330,9 +335,7 @@ fun ErrorState(onRetry: () -> Unit) = CenterColumn {
     DsIcon(Icons.Outlined.ErrorOutline, size = 52.dp, tint = MaterialTheme.colorScheme.primary)
     Text("경기를 불러오지 못했어요", style = MaterialTheme.typography.bodyLarge)
     Text("네트워크를 확인해 주세요", color = DsColors.muted2, style = MaterialTheme.typography.labelMedium)
-    Button(onClick = onRetry, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE0263A))) {
-        Text("다시 시도")
-    }
+    Button(onClick = onRetry) { Text("다시 시도") }   // containerColor 기본값 = colorScheme.primary
 }
 
 @Composable
@@ -348,6 +351,10 @@ fun StaleBanner(lastUpdatedText: String) = Row(
 ```
 
 각각 `@Preview`를 붙여 목업의 상태 화면과 대조합니다. `CenterColumn`은 아래 §6에 있습니다.
+
+<div class="callout warn"><span class="t">여기서 색 상수를 직접 쓰지 않는다</span>
+이 파일에 <code>Color(0xFF…)</code>를 박으면 <strong>라이트 테마에서만 조용히 깨집니다</strong> — 다크에서 만든 회색이 페이퍼 배경 위에서 그대로 회색으로 남기 때문입니다. 목업은 모든 화면에 라이트 변형이 있으므로, 배경·라인·본문은 <code>MaterialTheme.colorScheme.*</code>, 의미색은 <code>DsColors.*</code>로만 읽습니다(Step 2 §6). 예외는 구단 컬러뿐이고 그것도 <code>teamColor</code>/<code>teamTint</code>를 거칩니다.
+</div>
 
 ## 6. 공용 UI 헬퍼
 
@@ -450,7 +457,79 @@ val sampleFinalExtra = sample(3, GameStatus.FINAL, home = 315, away = 316, hr = 
 val sampleCanceled   = sample(4, GameStatus.CANCELED, home = 2107, away = 319, label = "취소", venue = "창원")
 ```
 
-<div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(11이닝) · 순위 행+진출선 · 상태 4종이 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
+## 8. 선수 아바타와 기록 표
+
+Step 8의 **팀 선수단**·**선수 상세**가 함께 쓰는 셋입니다. 선수단 행과 선수 헤더가 같은 아바타를 쓰고,
+선수 상세는 같은 표 컴포넌트로 *월별 기록*과 *최근 5경기*를 그립니다 — 타자·투수 네 벌의 표가 전부 이 하나입니다.
+
+`core/ui/PlayerParts.kt`:
+
+```kotlin
+/** 선수 사진. 매퍼가 이미 https로 승격한 URL을 받는다(Step 3 함정 9). 없거나 실패하면 실루엣. */
+@Composable
+fun PlayerAvatar(photoUrl: String?, size: Dp = 34.dp) = AsyncImage(
+    model = photoUrl,
+    contentDescription = null,
+    placeholder = rememberVectorPainter(Icons.Outlined.Person),
+    error = rememberVectorPainter(Icons.Outlined.Person),
+    modifier = Modifier.size(size).clip(CircleShape)
+        .background(MaterialTheme.colorScheme.surfaceVariant)
+        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
+)
+
+/** 대표 기록 4칸. 첫 칸만 앱 액센트다 — 팀 색이 아닙니다(Step 2의 역할 구분). */
+@Composable
+fun StatTiles(tiles: List<Pair<String, String>>) = Row(
+    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
+) {
+    tiles.forEachIndexed { i, (value, label) ->
+        Column(Modifier.weight(1f)) {
+            Text(value, style = Display.copy(fontSize = 32.sp), maxLines = 1,
+                color = if (i == 0) DsColors.live else MaterialTheme.colorScheme.onSurface)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = DsColors.muted2)
+        }
+    }
+}
+
+/** `emphasized` = 시즌 합계 행. 셀이 `null`이면 빈칸이 아니라 `—` 로 그린다(0과 구분, Step 3 함정 12). */
+data class StatRow(val cells: List<String?>, val emphasized: Boolean = false)
+
+@Composable
+fun StatTable(headers: List<String>, rows: List<StatRow>, weights: List<Float> = List(headers.size) { 1f }) = Column {
+    StatLine(headers, weights, header = true)
+    rows.forEach { StatLine(it.cells, weights, emphasized = it.emphasized) }
+}
+
+@Composable
+private fun StatLine(cells: List<String?>, weights: List<Float>, header: Boolean = false, emphasized: Boolean = false) {
+    if (!header) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    Row(
+        Modifier.fillMaxWidth()
+            .background(if (emphasized) MaterialTheme.colorScheme.surface else Color.Transparent)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        cells.forEachIndexed { i, c ->
+            Text(
+                c ?: "—",
+                Modifier.weight(weights.getOrElse(i) { 1f }),
+                textAlign = if (i == 0) TextAlign.Start else TextAlign.End,
+                style = ScoreNumber.copy(fontSize = if (header) 10.sp else 12.sp),
+                fontWeight = if (emphasized) FontWeight.Bold else FontWeight.Normal,
+                color = if (header || c == null) DsColors.muted2 else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+        }
+    }
+}
+```
+
+<div class="callout tip"><span class="t">표를 컴포넌트 하나로 두는 이유</span>
+타자 월별(7열)·투수 월별(8열)·타자 최근(7열)·투수 최근(7열) — 네 벌인데 다른 건 <strong>헤더 문자열과 셀 문자열</strong>뿐입니다. 열 폭은 <code>weights</code>로 넘깁니다. 도메인 → 문자열 변환은 화면(Step 8)이 하고, 이 컴포넌트는 <code>String?</code>만 압니다 — 그래서 <code>core/ui</code>에 있어도 <code>PlayerRecord</code>를 몰라도 됩니다.
+</div>
+
+<div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(11이닝) · 순위 행+진출선 · 상태 4종 · 아바타/기록 표가 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다크·라이트 Preview를 <strong>둘 다</strong> 띄워 색 상수가 남아 있지 않은지 확인하세요. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-4">← Step 4</a>

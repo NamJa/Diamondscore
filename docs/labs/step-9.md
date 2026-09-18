@@ -66,8 +66,19 @@ private fun dsEntryProvider(stack: NavBackStack<NavKey>): (NavKey) -> NavEntry<N
             TeamDetailScreen(
                 key,
                 onGame = { id -> stack.add(GameDetailKey(id)) },
+                onRoster = { id -> stack.add(TeamRosterKey(id)) },
                 onBack = { stack.removeLastOrNull() },
             )
+        }
+        entry<TeamRosterKey> { key ->
+            TeamRosterScreen(
+                key,
+                onPlayer = { playerKey -> stack.add(playerKey) },   // 화면이 teamId까지 채워 넘긴다
+                onBack = { stack.removeLastOrNull() },
+            )
+        }
+        entry<PlayerDetailKey> { key ->
+            PlayerDetailScreen(key, onBack = { stack.removeLastOrNull() })
         }
         entry<SettingsKey> {
             SettingsScreen(onBack = { stack.removeLastOrNull() })
@@ -242,7 +253,7 @@ fun SettingLink(label: String, onClick: () -> Unit = {}) = Row(
     Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 15.dp),
     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
     Text(label, style = MaterialTheme.typography.bodyLarge)
-    DsIcon(Icons.Outlined.ChevronRight, size = 20.dp, tint = Color(0xFF55606D))
+    DsIcon(Icons.Outlined.ChevronRight, size = 20.dp, tint = DsColors.muted2)
 }
 ```
 
@@ -288,6 +299,10 @@ private fun dsEntryProvider(stack: NavBackStack<NavKey>): (NavKey) -> NavEntry<N
         entry<StandingsKey>(metadata = ListDetailSceneStrategy.listPane()) { … }
         entry<TeamsKey>(metadata = ListDetailSceneStrategy.listPane()) { … }
         entry<TeamDetailKey>(metadata = ListDetailSceneStrategy.detailPane()) { key -> … }
+
+        // 선수단은 팀 상세 안에서 다시 목록 → 선수 상세다. 그래서 키를 따로 둔 것(Step 2)
+        entry<TeamRosterKey>(metadata = ListDetailSceneStrategy.listPane()) { key -> … }
+        entry<PlayerDetailKey>(metadata = ListDetailSceneStrategy.detailPane()) { key -> … }
 
         // 설정·즐겨찾기는 pane 분할이 없으니 metadata 없이 그대로
         entry<FavoritesKey> { … }
@@ -364,14 +379,18 @@ R8이 kotlinx.serialization DTO를 지우면 릴리스에서만 파싱 크래시
 - [ ] 라이브 점수·이닝이 화면 표시 중 자동 갱신
 - [ ] 연장 경기의 10회+ 열이 라인스코어에 나타난다
 - [ ] 순위 승·패·무·게임차·진출선, 팀 상세 컬러 헤더
-- [ ] 경기→팀, 순위→팀 이동과 back 문맥 복원
+- [ ] 팀 선수단이 투수·타자 두 탭으로 뜨고 등번호가 겹쳐도 크래시하지 않는다
+- [ ] 선수 상세가 타자/투수에 따라 다른 표를 그리고, 합계 행이 "13"이 아니라 "합계"로 보인다
+- [ ] 기록이 없는 칸이 `0`이 아니라 `—`로 보인다
+- [ ] 경기→팀, 순위→팀, 팀→선수단→선수 이동과 back 문맥 복원
 - [ ] 오프라인에서 캐시 + 마지막 갱신 표시
-- [ ] 범위 밖(볼카운트·선수 기록)의 UI 자리를 만들지 않았다
+- [ ] 범위 밖(볼카운트·문자중계·라인업·개인 순위)의 UI 자리를 만들지 않았다
+- [ ] 팀 색과 앱 액센트가 섞이지 않았다 — 두산(네이비)·KIA(레드)를 번갈아 열어 확인
 - [ ] compact/expanded, 다크(+선택 시 라이트), 200% 글꼴 검증
 - [ ] R8 릴리스 빌드가 실제로 동작
 
 <div class="callout ok"><span class="t">완성 🎉</span>
-목업의 모든 화면을 데이터로 살아 움직이게 만들었습니다. 확장은 P1(볼카운트·문자중계·라인업·선수 기록 — 같은 API의 <code>detail</code>·<code>Live_comment</code>·<code>lineup</code>·<code>Player_Info</code>)을 붙이거나, 공개 배포를 위해 <a href="#/IMPLEMENTATION_PLAN_KO">전체 계획서</a> §13(BFF 전환)을 참고하세요.
+목업의 모든 화면을 데이터로 살아 움직이게 만들었습니다. 확장은 P1(볼카운트·문자중계·라인업·개인 순위 — 같은 API의 <code>detail</code>·<code>Live_comment</code>·<code>lineup</code>·<code>Sector_Rank</code>)을 붙이거나, 공개 배포를 위해 <a href="#/IMPLEMENTATION_PLAN_KO">전체 계획서</a> §13(BFF 전환)을 참고하세요.
 </div>
 
 <div class="pager">

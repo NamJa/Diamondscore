@@ -255,8 +255,10 @@ package com.diamondscore
 import android.app.Application
 import dagger.hilt.android.HiltAndroidApp
 
+// 이름은 DiamondScoreApplication이다 — Step 9의 @Composable fun DiamondScoreApp()과 같은 패키지라
+// 클래스를 DiamondScoreApp으로 두면 생성자와 함수가 같은 시그니처로 충돌한다("Conflicting overloads").
 @HiltAndroidApp
-class DiamondScoreApp : Application()
+class DiamondScoreApplication : Application()
 ```
 
 `AndroidManifest.xml`의 `<application>`에 등록하고 인터넷 권한을 추가합니다.
@@ -266,7 +268,7 @@ class DiamondScoreApp : Application()
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
 <application
-    android:name=".DiamondScoreApp"
+    android:name=".DiamondScoreApplication"
     ... >
 ```
 
@@ -313,14 +315,14 @@ val DsLightColors = lightColorScheme(
     outlineVariant   = Color(0xFFECE8E0),
 )
 
-/** M3 역할로 안 잡히는 의미색. 다크/라이트 두 세트. */
+/** M3 역할로 안 잡히는 의미색. 다크/라이트 두 세트. `live`는 `primary`와 같은 값이라 여기 두지 않는다. */
 data class DsExtras(
-    val liveDot: Color, val gold: Color, val win: Color, val loss: Color,
+    val gold: Color, val win: Color, val loss: Color,
     val staleBg: Color, val staleLine: Color, val faint: Color,
 )
-val DarkExtras  = DsExtras(Color(0xFFFF2D4B), Color(0xFFE7B24A), Color(0xFF39D98A), Color(0xFFC83250),
+val DarkExtras  = DsExtras(Color(0xFFE7B24A), Color(0xFF39D98A), Color(0xFFC83250),
                            Color(0xFF241C0B), Color(0xFF4A3D1E), Color(0xFF4A4E5C))
-val LightExtras = DsExtras(Color(0xFFD21F3C), Color(0xFFB98900), Color(0xFF1E9E5E), Color(0xFFC83250),
+val LightExtras = DsExtras(Color(0xFFB98900), Color(0xFF1E9E5E), Color(0xFFC83250),
                            Color(0xFFFBF3DC), Color(0xFFE8DCBE), Color(0xFFB4AFA4))
 
 val LocalDsExtras = androidx.compose.runtime.staticCompositionLocalOf { DarkExtras }
@@ -328,7 +330,6 @@ val LocalDsExtras = androidx.compose.runtime.staticCompositionLocalOf { DarkExtr
 /** 의미색을 테마 인지형으로 읽는 접근자 — 컴포저블 안에서 `DsColors.live` 처럼 씁니다. */
 object DsColors {
     val live: Color      @Composable @ReadOnlyComposable get() = MaterialTheme.colorScheme.primary
-    val liveDot: Color   @Composable @ReadOnlyComposable get() = LocalDsExtras.current.liveDot
     val gold: Color      @Composable @ReadOnlyComposable get() = LocalDsExtras.current.gold
     val win: Color       @Composable @ReadOnlyComposable get() = LocalDsExtras.current.win
     val loss: Color      @Composable @ReadOnlyComposable get() = LocalDsExtras.current.loss
@@ -341,7 +342,8 @@ object DsColors {
 > 추가 import: `androidx.compose.material3.MaterialTheme`, `androidx.compose.runtime.{Composable, ReadOnlyComposable}`.
 
 <div class="callout tip"><span class="t">색을 읽는 법</span>
-배경·서피스·본문·라인·액센트는 <code>MaterialTheme.colorScheme.{background,surface,onSurface,onSurfaceVariant,outline,primary}</code>로, 라이브 닷·골드·승/패는 <code>LocalDsExtras.current.{liveDot,gold,win,loss}</code>로 읽습니다. 이렇게 하면 다크↔라이트 전환 시 색이 자동으로 바뀝니다.
+배경·서피스·본문·라인·액센트는 <code>MaterialTheme.colorScheme.{background,surface,onSurface,onSurfaceVariant,outline,primary}</code>로, 골드·승/패는 <code>LocalDsExtras.current.{gold,win,loss}</code>로 읽습니다. 이렇게 하면 다크↔라이트 전환 시 색이 자동으로 바뀝니다.
+<br><strong><code>win</code>·<code>loss</code>는 아직 어느 화면도 쓰지 않습니다</strong> — 목업 팀 상세의 승/패 글자용으로 잡아 둔 값인데, Step 8은 그 자리를 공용 <code>GameCard</code>(승팀을 굵게)로 대신합니다. 팀 상세에 승/패 글자를 넣을 게 아니면 두 값은 지워도 됩니다.
 </div>
 
 ## 7. 타이포그래피 — Bebas Neue + Archivo + Noto Sans KR
@@ -373,8 +375,6 @@ private val provider = GoogleFont.Provider(
     "com.google.android.gms",
     R.array.com_google_android_gms_fonts_certs,
 )
-private fun gf(name: String, w: FontWeight) = FontFamily(Font(GoogleFont(name), provider, w))
-
 val Bebas   = FontFamily(Font(GoogleFont("Bebas Neue"), provider, FontWeight.Normal))
 val Archivo = FontFamily(
     Font(GoogleFont("Archivo"), provider, FontWeight.Normal),
@@ -444,11 +444,40 @@ fun teamShort(id: Long): String = KBO_TEAMS[id]?.short ?: "?"
 ```kotlin
 package com.diamondscore.core.designsystem
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import com.diamondscore.core.common.KBO_TEAMS
 
+/** 구단 원색 — 엠블럼·컬러 바처럼 **면**으로 쓸 때만. */
 fun teamColor(id: Long): Color = Color(KBO_TEAMS[id]?.colorArgb ?: 0xFF8A8D91)
+
+/**
+ * 구단 색을 현재 배경 위에서 읽히게 조정한 틴트 — 팀명 라벨·등번호처럼 **글자**로 쓸 때.
+ * 원색을 그대로 글자에 쓰면 두산(`#232A63`)·롯데(`#24406E`)처럼 어두운 팀은 다크 배경에서 사라지고,
+ * KIA(`#EA0029`)처럼 밝은 팀은 라이트 배경에서 대비가 모자랍니다. 색상(hue)은 유지한 채 채도·명도만 옮깁니다.
+ */
+@Composable @ReadOnlyComposable
+fun teamTint(id: Long): Color {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV(teamColor(id).toArgb(), it) }
+    hsv[1] = hsv[1].coerceAtMost(if (dark) 0.55f else 0.95f)   // 채도
+    hsv[2] = if (dark) maxOf(hsv[2], 0.85f) else minOf(hsv[2], 0.55f)   // 명도
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
 ```
+
+<div class="callout tip"><span class="t">팀 색과 앱 액센트는 다른 역할이다</span>
+확정 목업이 두 계열을 <strong>섞지 않습니다</strong>.
+<ul>
+<li><strong>팀 색</strong>(<code>teamColor</code>/<code>teamTint</code>) — "이건 이 팀 것"을 가리킬 때: 엠블럼, 헤더 글로우, 팀명 라벨, 등번호, 순위표의 팀 닷.</li>
+<li><strong>앱 액센트</strong>(<code>MaterialTheme.colorScheme.primary</code>) — 앱의 기능일 때: 라이브 배지, 탭바 선택, 세그먼트, 링크·이동, 대표 기록 수치.</li>
+</ul>
+KIA 레드가 앱 액센트와 우연히 같은 계열이라 이 구분이 안 보였는데, 두산처럼 네이비 팀을 열어 보면 바로 드러납니다 — 팀 헤더는 네이비, 탭바와 "선수단 ›"은 여전히 레드입니다.
+</div>
 
 <div class="callout tip"><span class="t">경계 규칙</span>
 이 앱이 지키는 규칙은 두 개뿐입니다 — <strong><code>feature</code>·<code>core/designsystem</code>은 <code>data</code>를 참조하지 않는다</strong>, <strong>DTO·Room Entity는 <code>data</code> 레이어를 벗어나지 않는다.</strong> 위 분리가 첫 번째 규칙을 위한 것입니다.
@@ -477,9 +506,16 @@ import kotlinx.serialization.Serializable
 // 인자를 받는 화면
 @Serializable data class GameDetailKey(val eventId: Long) : NavKey
 @Serializable data class TeamDetailKey(val teamId: Long) : NavKey
+@Serializable data class TeamRosterKey(val teamId: Long) : NavKey      // 팀 정보 — 선수단·연혁 (Step 8)
+// Player_Info 응답에는 소속 팀이 없다 → 팀 색·팀명을 위해 키가 teamId를 함께 싣는다 (Step 8-4)
+@Serializable data class PlayerDetailKey(val playerId: Long, val teamId: Long) : NavKey
 
 @Serializable data object SettingsKey : NavKey
 ```
+
+<div class="callout tip"><span class="t">키가 9개인 이유</span>
+탭 루트 4 + 인자 화면 4(경기 상세·팀 상세·선수단·선수 상세) + 설정 1입니다. <code>TeamRosterKey</code>와 <code>TeamDetailKey</code>를 <strong>따로</strong> 두는 이유는 태블릿 때문입니다(Step 9) — 팀 상세는 detail pane, 선수단은 그 안에서 다시 목록이라 <code>ListDetailSceneStrategy</code>가 둘을 구분해야 합니다. 같은 <code>teamId</code>를 실어도 키 타입이 다르면 back stack에서 별개 항목입니다.
+</div>
 
 <div class="callout tip"><span class="t"><code>@Serializable</code>이 필수인 이유</span>
 <code>rememberNavBackStack</code>은 back stack을 직렬화해 <strong>프로세스 재생성까지</strong> 살립니다. 그래서 모든 키에 <code>@Serializable</code>이 필요하고, §4에서 <code>kotlin-serialization</code> 플러그인을 넣은 이유가 DTO만이 아닙니다. 인자 없는 화면은 <code>data object</code>로 두면 인스턴스가 하나라 비교가 공짜입니다.
