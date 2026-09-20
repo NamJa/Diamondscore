@@ -16,7 +16,7 @@ Kotlin 2.4.10 · Jetpack Compose (Material 3) · 클린 아키텍처(단일 `:ap
 - **Compose**: BOM `2026.08.00`, 컴파일러는 `org.jetbrains.kotlin.plugin.compose` (Kotlin 동봉, 별도 pin 없음)
 - **탐색**: **Navigation 3 `1.1.7`** — `NavDisplay` + 타입 있는 `NavKey`. Nav2(`navigation-compose`)는 쓰지 않습니다
 - **네트워크**: Retrofit 3.0.0 + OkHttp 5.5.0 + kotlinx.serialization 1.11.0
-- **이미지**: Coil 3.6.1 (`coil-compose` + `coil-network-okhttp`, OkHttp 인스턴스 공유)
+- **이미지**: Coil 3.6.1 (`coil-compose` + `coil-network-okhttp`, OkHttp 네트워크 스택 사용)
 - **로컬**: Room 2.8.4 (읽기 SSOT) + DataStore · **DI**: Hilt 2.60.1
 - **SDK**: `compileSdk`/`targetSdk` 36, `minSdk` 26 · **릴리스**: R8 full mode
 
@@ -26,7 +26,7 @@ Kotlin 2.4.10 · Jetpack Compose (Material 3) · 클린 아키텍처(단일 `:ap
 
 규칙 4개로 유지합니다 (상세 [§5.1](./docs/IMPLEMENTATION_PLAN_KO.md)):
 
-1. `feature`·`core/ui`·`core/designsystem`은 `data`를 참조하지 않는다 (ViewModel은 Repository만 주입받는다)
+1. `feature`·`core/ui`·`core/designsystem`은 `data`의 내부(`WisetotoApi`·DAO·DTO·`Entity`)를 참조하지 않는다 — 넘어오는 것은 Repository와 `domain/model`뿐
 2. DTO와 Room `Entity`는 `data` 밖으로 나가지 않는다 — 경계를 넘는 타입은 `domain/model`뿐
 3. `core/designsystem`은 도메인을 모른다 (도메인을 아는 공용 컴포넌트는 `core/ui`)
 4. `data`는 Compose를 모른다 (그래서 한글 팀명은 `core/common`, 팀 컬러는 `core/designsystem`)
@@ -37,7 +37,7 @@ Kotlin 2.4.10 · Jetpack Compose (Material 3) · 클린 아키텍처(단일 `:ap
 
 wisetoto API (`bsrest.wisetoto.com`, Google Play "프로야구 LIVE" 앱의 백엔드), KBO `league_info_seq = 39`, 시즌은 연도(`year=2026`).
 
-2026-09-14~15 실측 기준으로 날짜별 일정(`Schedule_Day`)·이닝별 득점(15칸)·R/H/E·경기 상태·순위(승·패·무·게임차)·구단 정보·선발/승패 투수를 제공하고, 볼카운트·주자·라인업·박스스코어·문자중계·선수 기록까지 같은 API에 있습니다. MVP는 득점 중심으로 완결하고 나머지는 라이브 스키마 관측(`DS-002`) 뒤 P1로 붙입니다 — 근거는 구현 계획 §2.3·§12 참고. 필수 쿼리 `os=a&lang=kr`, 경로는 대소문자 구분.
+2026-09-14~15 실측 기준으로 날짜별 일정(`Schedule_Day`)·이닝별 득점(15칸)·R/H/E·경기 상태·순위(승·패·무·게임차)·구단 정보·선발/승패 투수를 제공하고, 볼카운트·주자·라인업·박스스코어·문자중계·선수 기록까지 같은 API에 있습니다. P0는 득점 화면에 더해 **팀 선수단·구단 연혁**과 **선수 상세**(프로필·월별·최근 5경기)까지 포함하고(스키마 실측 `DS-006`, 2026-09-18), 볼카운트·주자·라인업·박스스코어·문자중계·개인 순위(`Sector_Rank`)는 P1로 남깁니다 — 근거는 구현 계획 §1.2·§2.3·§12 참고. 필수 쿼리 `os=a&version=4.1.3&lang=kr`(세 키 모두 필수, 값은 검사하지 않음), 경로는 대소문자 구분.
 
 ## GitHub Pages 배포
 

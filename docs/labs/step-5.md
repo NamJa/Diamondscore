@@ -25,8 +25,8 @@
 </div>
 
 <div class="callout tip"><span class="t">코드에 나오는 작은 헬퍼들</span>
-<code>DsIcon</code>·<code>DsTabIcon</code>·<code>CenterColumn</code>·<code>TopBar</code>·<code>HeaderCell</code>·<code>TeamCell</code>·
-<code>TotalCell</code> 등 공용 조각의 <strong>완전한 코드는 §6</strong>에, Preview용 <code>sampleLive</code> 등 <strong>샘플 데이터는 §7</strong>에, Step 8이 쓰는 <code>PlayerAvatar</code>·<code>StatTiles</code>·<code>StatTable</code>은 <strong>§8</strong>에 있습니다. 먼저 §6·§7을 만들어 두고 위 컴포넌트를 작성하면 매끄럽습니다.
+<code>DsIcon</code>·<code>DsTabIcon</code>·<code>CenterColumn</code>·<code>TopBar</code>·<code>pulseAlpha</code> 등 화면 전반이 쓰는
+공용 조각의 <strong>전체 구현은 §6</strong>에, 라인스코어 표 전용인 <code>HeaderCell</code>·<code>TeamCell</code>·<code>TotalCell</code>은 <strong>§3의 같은 파일 안</strong>에, Preview용 <code>sampleLive</code> 등 <strong>샘플 데이터는 §7</strong>에, Step 8이 쓰는 <code>PlayerAvatar</code>·<code>StatTiles</code>·<code>StatTable</code>은 <strong>§8</strong>에 있습니다. 모두 생략 없는 구현이며 package·import는 각 파일 경로에 맞춰 채웁니다. §1~§5를 위에서부터 따라가되, 컴파일 오류가 거슬리면 §6·§7을 먼저 만들어 두고 돌아와도 됩니다.
 </div>
 
 ## 1. 하단 네비게이션 (DsBottomBar)
@@ -96,6 +96,15 @@ private fun LiveHeroCard(g: GameSummary, onClick: () -> Unit) {
                 Text("VS", style = Display.copy(fontSize = 22.sp), color = DsColors.muted2)
                 HeroSide(g.home, g.homeRuns, Modifier.weight(1f), accent = true)
             }
+            if (g.awayStarter != null || g.homeStarter != null) {            // 선발 미정은 지어내지 않는다
+                Spacer(Modifier.height(12.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(g.awayStarter?.let { "선발 $it" } ?: "", color = DsColors.textTertiary,
+                        style = MaterialTheme.typography.labelSmall)
+                    Text(g.homeStarter?.let { "선발 $it" } ?: "", color = DsColors.textTertiary,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+            }
         }
     }
 }
@@ -114,7 +123,8 @@ private fun LiveBadge(label: String) = Row(
     Modifier.clip(RoundedCornerShape(999.dp)).background(DsColors.live)
         .padding(horizontal = 12.dp, vertical = 5.dp),
     horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
-    Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White))       // 깜빡임은 §states 애니메이션 재사용
+    Box(Modifier.size(6.dp).clip(CircleShape)
+        .background(Color.White.copy(alpha = pulseAlpha())))                // 깜빡임 — §6의 pulseAlpha
     Text("LIVE · $label", color = Color.White, fontWeight = FontWeight.Bold,
         style = MaterialTheme.typography.labelMedium)
 }
@@ -132,13 +142,20 @@ private fun GameRow(g: GameSummary, onClick: () -> Unit) = Column {
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(g.startsAt.atZone(SEOUL).toLocalTime().toString().take(5),
                         style = Display.copy(fontSize = 20.sp), color = DsColors.muted2)
-                    Text("${g.away.nameKo} · ${g.home.nameKo}", style = MaterialTheme.typography.bodyLarge)
+                    Column {
+                        Text("${g.away.nameKo} · ${g.home.nameKo}", style = MaterialTheme.typography.bodyLarge)
+                        listOfNotNull(g.awayStarter, g.homeStarter).takeIf { it.size == 2 }?.let {
+                            Text("선발 ${it[0]} · ${it[1]}", color = DsColors.textTertiary,   // 둘 다 있을 때만
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
                 }
                 Text(g.venueShort ?: "", color = DsColors.muted2, style = MaterialTheme.typography.labelSmall)
             }
             GameStatus.FINAL -> {
                 Text(buildAnnotatedFinal(g), style = MaterialTheme.typography.bodyLarge)
-                Text(if (g.wentExtra) "연장" else "종료", color = DsColors.muted2,
+                Text(if (g.wentExtra) g.finalInning?.let { "연장 ${it}회" } ?: "연장" else "종료",
+                    color = DsColors.muted2,
                     style = MaterialTheme.typography.labelSmall)
             }
             else -> {   // 취소·연기
@@ -181,23 +198,28 @@ private fun GameCardPreview() = DiamondScoreTheme {
     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         GameCard(sampleLive) {}       // ● 6회말  LG 2 : KIA 3
         GameCard(sampleScheduled) {}  // 18:30  삼성 · 롯데
-        GameCard(sampleFinalExtra) {} // 종료·연장  두산 1 : SSG 2
+        GameCard(sampleFinalExtra) {} // 연장 11회  두산 1 : SSG 2
         GameCard(sampleCanceled) {}  // 취소
     }
 }
 ```
 
-<div class="checkpoint"><span class="t"></span> Preview 창에 4장의 카드가 목업과 같은 모습(원정 먼저·팀 컬러 바·라이브 빨강 강조·연장 표기)으로 뜨면 카드 완성.</div>
+<div class="checkpoint"><span class="t"></span> Preview 창에 4장의 카드가 목업과 같은 모습(원정 먼저·선발 한 줄·라이브 빨강 강조·연장 표기)으로 뜨면 카드 완성.</div>
 
 ## 3. 라인스코어 테이블 (LineScoreTable)
 
 이닝 수가 경기마다 다르고 연장이 붙습니다. **데이터에 있는 만큼만** 열을 그리고 최소 9열을 보장합니다.
+오른쪽 총계는 목업대로 **R · H · E** 세 열이고, H·E는 **값이 올 때만** 붙습니다(플랜 §1.3).
 
 `core/ui/LineScoreTable.kt`:
 
 ```kotlin
 @Composable
-fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>, awayR: Int?, homeR: Int?) {
+fun LineScoreTable(
+    away: TeamRef, home: TeamRef, innings: List<InningRuns>,
+    awayR: Int?, homeR: Int?,
+    awayH: Int? = null, homeH: Int? = null, awayE: Int? = null, homeE: Int? = null,
+) {
     val count = maxOf(9, innings.maxOfOrNull { it.number } ?: 9)
     Column {   // 에디토리얼: 카드 대신 위·아래 헤어라인
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
@@ -210,25 +232,33 @@ fun LineScoreTable(away: TeamRef, home: TeamRef, innings: List<InningRuns>, away
                 val extra = n > 9
                 Column {
                     HeaderCell("$n", accent = extra)
-                    RunCell(r?.away)
-                    RunCell(r?.home, live = (n == count))
+                    RunCell(r?.away, "${n}회 초 원정")                      // TalkBack: "1회 초 원정 1점"
+                    RunCell(r?.home, "${n}회 말 홈", live = (n == count))
                 }
             }
             Column {
                 HeaderCell("R", strong = true); TotalCell(awayR); TotalCell(homeR)
+            }
+            if (awayH != null || homeH != null) Column {       // 안타 — 공급될 때만
+                HeaderCell("H"); TotalCell(awayH, muted = true); TotalCell(homeH, muted = true)
+            }
+            if (awayE != null || homeE != null) Column {       // 실책 — 공급될 때만
+                HeaderCell("E"); TotalCell(awayE, muted = true); TotalCell(homeE, muted = true)
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
     }
 }
 
-@Composable private fun RunCell(run: Int?, live: Boolean = false) =
-    Box(Modifier.width(34.dp).height(38.dp), Alignment.Center) {
+@Composable private fun RunCell(run: Int?, label: String, live: Boolean = false) =
+    Box(Modifier.width(34.dp).height(38.dp)
+        .semantics { run?.let { contentDescription = "$label ${it}점" } },   // 미진행 셀은 낭독하지 않는다
+        Alignment.Center) {
         Text(run?.toString() ?: "", style = ScoreNumber.copy(fontSize = 13.sp),   // 미진행 = 빈칸
             color = if (live && run != null) DsColors.live else MaterialTheme.colorScheme.onSurface)
     }
 
-// 라인스코어 셀 — 팀 열 64dp, 이닝/R 열 34dp
+// 라인스코어 셀 — 팀 열 64dp, 이닝/R·H·E 열 34dp
 @Composable
 fun HeaderCell(text: String, accent: Boolean = false, strong: Boolean = false, width: Dp = 34.dp) =
     Box(Modifier.width(width).height(30.dp), Alignment.Center) {
@@ -246,9 +276,10 @@ fun TeamCell(text: String, width: Dp = 64.dp) =
     }
 
 @Composable
-fun TotalCell(v: Int?, width: Dp = 34.dp) =
+fun TotalCell(v: Int?, width: Dp = 34.dp, muted: Boolean = false) =
     Box(Modifier.width(width).height(38.dp), Alignment.Center) {
-        Text(v?.toString() ?: "", style = Display.copy(fontSize = 18.sp))   // Bebas R
+        Text(v?.toString() ?: "", style = Display.copy(fontSize = if (muted) 14.sp else 18.sp),
+            color = if (muted) DsColors.muted2 else MaterialTheme.colorScheme.onSurface)   // Bebas R, 작은 H·E
     }
 ```
 
@@ -258,7 +289,7 @@ fun TotalCell(v: Int?, width: Dp = 34.dp) =
 
 ## 4. 순위 행 (StandingRow) + 진출선
 
-에디토리얼 라인 로우: **Bebas 순위 숫자** + 팀컬러 닷 + **승·패·무**·승률·게임차. 5위 뒤에 진출선.
+에디토리얼 라인 로우: **Bebas 순위 숫자** + 팀컬러 닷 + **승·패·무**·승률·게임차·**연속**. 5위 뒤에 진출선.
 (경기 수 컬럼은 목업에서 뺐습니다 — 승·패·무 합으로 알 수 있음)
 
 `core/ui/StandingRow.kt`:
@@ -269,6 +300,7 @@ fun StandingRow(s: Standing, onClick: () -> Unit) = Column {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)      // 위 헤어라인
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .heightIn(min = 48.dp)                                          // 터치 타깃 48dp
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -287,6 +319,9 @@ fun StandingRow(s: Standing, onClick: () -> Unit) = Column {
         Text(if (s.gamesBehind == 0.0) "-" else "%.1f".format(s.gamesBehind),
             Modifier.width(40.dp), style = ScoreNumber.copy(fontSize = 12.sp),
             textAlign = TextAlign.End, color = DsColors.muted2)
+        Text(s.streak.orEmpty(), Modifier.width(34.dp),                    // 연속 — 서버 straight 그대로
+            style = ScoreNumber.copy(fontSize = 11.sp), textAlign = TextAlign.End,
+            color = if (s.streak?.endsWith("승") == true) DsColors.win else DsColors.loss)
     }
 }
 
@@ -313,9 +348,10 @@ fun PlayoffDivider() = LabeledDivider("POSTSEASON", DsColors.live)
 ```kotlin
 @Composable
 fun LoadingCards(count: Int = 4) = Column(
-    Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-    val alpha by rememberInfiniteTransition(label = "sk").animateFloat(
-        .5f, .9f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "a")
+    Modifier.padding(14.dp)
+        .clearAndSetSemantics { contentDescription = "불러오는 중" },   // 빈 박스 4개를 각각 읽지 않게
+    verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val alpha = pulseAlpha(from = .5f, to = .9f, ms = 700)   // 스켈레톤은 배지보다 느리고 얕게
     repeat(count) {
         Box(Modifier.fillMaxWidth().height(84.dp).clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha)))
@@ -350,7 +386,7 @@ fun StaleBanner(lastUpdatedText: String) = Row(
 }
 ```
 
-각각 `@Preview`를 붙여 목업의 상태 화면과 대조합니다. `CenterColumn`은 아래 §6에 있습니다.
+각각 `@Preview`를 붙여 목업의 상태 화면과 대조합니다. `CenterColumn`·`pulseAlpha`는 아래 §6에 있습니다.
 
 <div class="callout warn"><span class="t">여기서 색 상수를 직접 쓰지 않는다</span>
 이 파일에 <code>Color(0xFF…)</code>를 박으면 <strong>라이트 테마에서만 조용히 깨집니다</strong> — 다크에서 만든 회색이 페이퍼 배경 위에서 그대로 회색으로 남기 때문입니다. 목업은 모든 화면에 라이트 변형이 있으므로, 배경·라인·본문은 <code>MaterialTheme.colorScheme.*</code>, 의미색은 <code>DsColors.*</code>로만 읽습니다(Step 2 §6). 예외는 구단 컬러뿐이고 그것도 <code>teamColor</code>/<code>teamTint</code>를 거칩니다.
@@ -361,9 +397,12 @@ fun StaleBanner(lastUpdatedText: String) = Row(
 여러 화면·컴포넌트가 함께 쓰는 작은 조각들. `core/ui/DsHelpers.kt`:
 
 ```kotlin
+/** 장식용 아이콘은 기본값 null 그대로 두고, 의미를 가진 아이콘(뒤로·즐겨찾기·설정)만 라벨을 넘긴다. */
 @Composable
-fun DsIcon(icon: ImageVector, tint: Color = LocalContentColor.current, size: Dp = 24.dp) =
-    Icon(icon, contentDescription = null, modifier = Modifier.size(size), tint = tint)
+fun DsIcon(
+    icon: ImageVector, contentDescription: String? = null,
+    tint: Color = LocalContentColor.current, size: Dp = 24.dp,
+) = Icon(icon, contentDescription, modifier = Modifier.size(size), tint = tint)
 
 @Composable
 fun DsTabIcon(tab: DsTab) = DsIcon(
@@ -374,6 +413,12 @@ fun DsTabIcon(tab: DsTab) = DsIcon(
         DsTab.FAVORITES  -> Icons.Outlined.StarBorder
     }
 )
+
+/** 무한 반복 알파 펄스. LIVE 배지 점(1→.35, 1.3초 왕복)과 스켈레톤이 같이 쓴다. */
+@Composable
+fun pulseAlpha(from: Float = 1f, to: Float = .35f, ms: Int = 650): Float =
+    rememberInfiniteTransition(label = "pulse").animateFloat(
+        from, to, infiniteRepeatable(tween(ms), RepeatMode.Reverse), label = "a").value
 
 /** 빈/오류 상태의 세로 가운데 정렬 컨테이너. */
 @Composable
@@ -386,13 +431,20 @@ fun CenterColumn(content: @Composable ColumnScope.() -> Unit) = Column(
 
 /** 화면 상단 타이틀 바 (부제 또는 우측 요소 옵션). */
 @Composable
-fun TopBar(title: String, subtitle: String? = null, trailing: @Composable (() -> Unit)? = null) = Row(
+fun TopBar(
+    title: String, subtitle: String? = null,
+    accentDot: Boolean = true,                    // 탭 루트는 마침표, 설정 화면은 false
+    trailing: @Composable (() -> Unit)? = null,
+) = Row(
     Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween,
 ) {
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(buildAnnotatedString {                                   // 목업 워드마크: Bebas 34 + 레드 마침표
+            append(title)
+            if (accentDot) withStyle(SpanStyle(color = DsColors.live)) { append(".") }
+        }, style = Display.copy(fontSize = 34.sp))
         subtitle?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = DsColors.muted2) }
     }
     trailing?.invoke()
@@ -401,13 +453,13 @@ fun TopBar(title: String, subtitle: String? = null, trailing: @Composable (() ->
 @Composable
 fun SectionLabel(text: String) = Text(
     text, Modifier.padding(start = 4.dp, top = 6.dp),
-    style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = DsColors.muted2,
+    style = Display.copy(fontSize = 15.sp, letterSpacing = 0.14.em), color = DsColors.muted2,   // 목업 섹션 헤더
 )
 
 @Composable
 fun LabeledBlock(title: String, content: @Composable () -> Unit) = Column {
     Text(title, Modifier.padding(bottom = 8.dp, start = 2.dp),
-        style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        style = Display.copy(fontSize = 15.sp, letterSpacing = 0.14.em), color = DsColors.muted2)
     content()
 }
 
@@ -415,7 +467,7 @@ fun LabeledBlock(title: String, content: @Composable () -> Unit) = Column {
 fun Caption(text: String) =
     Text(text, style = MaterialTheme.typography.labelSmall, color = DsColors.muted2)
 
-/** 순위 화면의 시즌 선택 칩. */
+/** 과거 시즌 전환(P1)이 들어올 때 쓸 조각 — 지금 순위 화면(Step 8)은 현재 시즌을 `Caption` 라벨로만 표시해 호출처가 없다. */
 @Composable
 fun SeasonChip(text: String, onClick: () -> Unit = {}) = Surface(
     onClick = onClick, color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(999.dp),
@@ -429,32 +481,72 @@ fun SeasonChip(text: String, onClick: () -> Unit = {}) = Surface(
 }
 ```
 
+<div class="callout tip"><span class="t">접근성은 컴포넌트가 들고 있다</span>
+Step 9 §5가 말하는 접근성 코드는 <strong>여기</strong>에 있습니다 — 라인스코어 셀의 요약 낭독(§3의 <code>RunCell</code>), 스켈레톤의 <code>clearAndSetSemantics</code>(§5의 <code>LoadingCards</code>), 그리고 위 <code>DsIcon</code>의 <code>contentDescription</code> 파라미터. <code>semantics</code>·<code>clearAndSetSemantics</code>·<code>contentDescription</code>은 <code>androidx.compose.ui.semantics</code>에서 가져옵니다. 터치 타깃은 M3가 대신 맞춰 줍니다 — <code>IconButton</code>은 48dp가 기본이고, <code>Button</code>·<code>SeasonChip</code>이 쓰는 클릭 가능한 <code>Surface</code>는 <code>minimumInteractiveComponentSize()</code>를 내부에서 적용해 보이는 크기가 작아도 터치 영역은 48dp입니다. 직접 만든 클릭 영역(<code>Modifier.clickable</code>)에만 <code>heightIn(min = 48.dp)</code>를 챙기세요.
+</div>
+
 <div class="callout tip"><span class="t">아이콘 의존성</span>
-<code>Icons.Outlined.CalendarMonth</code> 등은 <code>androidx.compose.material:material-icons-extended</code>에 있습니다. Step 2 <code>dependencies</code>에 <code>implementation("androidx.compose.material:material-icons-extended")</code>를 추가하세요. 목업의 라인 아이콘을 그대로 쓰려면 <code>ImageVector.Builder</code>로 옮겨도 됩니다.
+<code>Icons.Outlined.CalendarMonth</code> 등은 Step 2 §4에서 이미 넣은 <code>implementation(libs.compose.icons.extended)</code>에 들어 있습니다 — 여기서 의존성을 더 추가할 일은 없습니다. 목업의 라인 아이콘을 그대로 쓰려면 <code>ImageVector.Builder</code>로 옮겨도 됩니다.
 </div>
 
 ## 7. Preview 샘플 데이터
 
-Preview에서 4상태를 보려면 `GameSummary`를 손으로 채운 샘플이 필요합니다. `debug` 소스셋에 두세요.
+Preview에서 4상태를 보려면 `GameSummary`를 손으로 채운 샘플이 필요합니다. §3~§8의 Preview가 쓰는
+라인스코어·순위·선수단·기록 표 샘플도 같은 파일에 모읍니다. 다른 파일과 같은 main 소스셋의
+`core/ui/Samples.kt`에 두세요 — Preview 함수(§2)가 main에 있으니 샘플만 `debug` 소스셋에 두면
+`assembleRelease`가 `Unresolved reference: sampleLive`로 깨집니다. 릴리스에서는 R8이 통째로 지웁니다.
 
 ```kotlin
 private fun sample(
     id: Long, status: GameStatus, home: Long, away: Long,
     hr: Int? = null, ar: Int? = null, label: String = "", winner: Winner? = null,
-    extra: Boolean = false, venue: String? = null,
+    extra: Boolean = false, fi: Int? = null, venue: String? = null, hp: String? = null, ap: String? = null,
 ) = GameSummary(
     id = id, startsAt = Instant.now(), leagueDate = LocalDate.now(SEOUL),
     status = status, statusLabel = label,
     home = TeamRef(home, teamNameKo(home, ""), ""), away = TeamRef(away, teamNameKo(away, ""), ""),
-    homeRuns = hr, awayRuns = ar, winner = winner, wentExtra = extra,
-    venueShort = venue,
+    homeRuns = hr, awayRuns = ar, winner = winner, wentExtra = extra, finalInning = fi,
+    venueShort = venue, homeStarter = hp, awayStarter = ap,     // 선발이 없는 경기는 null 그대로
 )
 
 // 팀 id는 wisetoto team_info_seq (Step 2 KBO_TEAMS)
-val sampleLive       = sample(1, GameStatus.LIVE, home = 320, away = 322, hr = 3, ar = 2, label = "6회말", venue = "광주")
-val sampleScheduled  = sample(2, GameStatus.SCHEDULED, home = 317, away = 318, label = "경기 전", venue = "사직")
-val sampleFinalExtra = sample(3, GameStatus.FINAL, home = 315, away = 316, hr = 2, ar = 1, label = "경기 종료", winner = Winner.HOME, extra = true, venue = "인천")
+val sampleLive       = sample(1, GameStatus.LIVE, home = 320, away = 322, hr = 3, ar = 2, label = "6회말", venue = "광주", hp = "김민준", ap = "김태형")
+val sampleScheduled  = sample(2, GameStatus.SCHEDULED, home = 317, away = 318, label = "경기 전", venue = "사직", hp = "박세웅", ap = "원태인")
+val sampleFinalExtra = sample(3, GameStatus.FINAL, home = 315, away = 316, hr = 2, ar = 1, label = "경기 종료", winner = Winner.HOME, extra = true, fi = 11, venue = "인천")
 val sampleCanceled   = sample(4, GameStatus.CANCELED, home = 2107, away = 319, label = "취소", venue = "창원")
+
+// 라인스코어(§3) — sampleFinalExtra와 같은 경기. 9회까지 1-1, 11회말 끝내기라 11열이 나온다.
+private val awayLine = listOf(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+private val homeLine = listOf(0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1)
+val sampleInnings11 = List(11) { i -> InningRuns(i + 1, home = homeLine[i], away = awayLine[i]) }
+
+// 순위 행(§4) — 진출선을 보려면 5위 앞뒤가 있어야 한다(3·4위는 생략).
+private fun standing(p: Int, team: Long, w: Int, l: Int, d: Int, gb: Double, streak: String?) =
+    Standing(p, TeamRef(team, teamNameKo(team, ""), ""), games = w + l + d,
+        wins = w, losses = l, draws = d, winPct = w.toDouble() / (w + l), gamesBehind = gb, streak = streak)
+
+val sampleStandings = listOf(
+    standing(1, 320, 82, 50, 3, 0.0, "6승"),
+    standing(2, 322, 78, 54, 2, 4.0, "2패"),
+    standing(5, 316, 70, 62, 3, 12.0, "1승"),
+    standing(6, 317, 66, 67, 2, 16.5, null),
+)
+
+// 선수단(§8) — Preview는 네트워크를 타지 않으니 사진은 null(실루엣). 마지막은 100번대 = 육성선수.
+val sampleRoster = listOf(
+    RosterPlayer(1001, "양현종", 54, null, isDevelopment = false),
+    RosterPlayer(1002, "김도영", 5, null, isDevelopment = false),
+    RosterPlayer(1003, "박정우", 103, null, isDevelopment = true),
+)
+
+// 기록 표(§8) — 타자 월별 7열. null 셀은 "—"로, 마지막 행은 시즌 합계.
+val sampleStatHeaders = listOf("월", "경기", "타수", "안타", "홈런", "타점", "타율")
+val sampleStatRows = listOf(
+    StatRow(listOf("4월", "24", "92", "31", "5", "18", ".337")),
+    StatRow(listOf("5월", "26", "101", "28", "3", "15", ".277")),
+    StatRow(listOf("6월", "7", "21", null, null, null, null)),
+    StatRow(listOf("합계", "57", "214", "66", "9", "40", ".308"), emphasized = true),
+)
 ```
 
 ## 8. 선수 아바타와 기록 표

@@ -28,7 +28,7 @@ wt /rank/League_Rank "year=2026"      | head -c 120 ; echo   # 추가 쿼리는 
 
 ## 3. 핵심 엔드포인트 응답 저장
 
-이후 Step에서 **테스트 fixture**로 쓸 실제 응답을 파일로 저장합니다. 날짜는 2026 시즌에서 성격이 다른 날을 골랐습니다 — 종료일, 우천 취소일, 예정일, 연장 11회 경기. 팀·선수는 **두산 베어스(316)** 기준입니다(목업과 같은 팀).
+이후 Step에서 **테스트 fixture**로 쓸 실제 응답을 파일로 저장합니다. 날짜는 2026 시즌에서 성격이 다른 날을 골랐습니다 — 종료일, 우천 취소일, 연장 11회 경기. 예정 경기만은 고정 날짜가 아니라 **오늘** 목록에서 받습니다(바로 아래 이유). 팀·선수는 **두산 베어스(316)** 기준입니다(목업과 같은 팀).
 
 ```bash
 mkdir -p fixtures
@@ -37,7 +37,7 @@ wt() { curl -sS "https://bsrest.wisetoto.com$1?os=a&version=4.1.3&lang=kr${2:+&$
 # ── 경기 ──
 wt /live/Schedule_Day/20260913 > fixtures/schedule_day_finished.json   # 4경기 전부 종료(e)
 wt /live/Schedule_Day/20260409 > fixtures/schedule_day_canceled.json   # 5경기 우천 취소(c)
-wt /live/Schedule_Day/20260915 > fixtures/schedule_day_scheduled.json  # 예정(a) — 지났으면 미래 날짜로
+wt /live/Schedule_Day/$(date +%Y%m%d) > fixtures/schedule_day_scheduled.json  # 예정(a) — 오늘, 첫 경기 시작 전에
 wt /live/Schedule_Month/202609 > fixtures/schedule_month.json          # 9월 — 구장명 표기 흔들림 확인용
 wt /live/Schedule_Month/202603 > fixtures/schedule_month_march.json    # 3월 — WBC·시범경기가 섞인 달
 wt /live/schedule/490683       > fixtures/game_extra.json              # 09-10 NC 2:1 KIA, 연장 11회
@@ -54,11 +54,15 @@ wt /extra/Team_Info "team_info_seq=316&player_position=1" > fixtures/team_info_b
 wt /extra/Player_Info/938464 > fixtures/player_batter.json    # 양의지(포수 25번) — 타자 스키마
 wt /extra/Player_Info/923961 > fixtures/player_pitcher.json   # 곽빈(투수 47번)  — 투수 스키마 + null 행 포함
 
-# 경기일 18:30 이후에 한 번 더:
+# 경기 진행 중에 한 번 더:
 # wt /live/Schedule_Day/$(date +%Y%m%d) > fixtures/schedule_day_live.json  # 진행 중(i)
 
 ls -la fixtures
 ```
+
+<div class="callout warn"><span class="t">예정 fixture는 <strong>오늘</strong>, 첫 경기 시작 전에 받는다</span>
+고정 날짜를 적어 두면 그 날이 지나는 순간 <code>state</code>가 <code>e</code>로 바뀌어 파일 이름과 내용이 어긋납니다. 그렇다고 미래 날짜도 안 됩니다 — 이틀 뒤 목록은 <code>state:"a"</code>이지만 <code>home_pitcher</code>·<code>away_pitcher</code>가 전부 <code>null</code>입니다(실측). <strong>선발투수는 경기 당일 목록에만 채워집니다.</strong> Step 3의 <code>예정 경기는 선발투수가 있고 점수는 null</code> 테스트가 둘 다 보므로 오늘 첫 경기 시작 전(평일 18:30, 주말 14:00)에 받으세요. 부득이 미래 날짜로 받았다면 선발이 <code>null</code>이므로 Step 3에서 <code>assertNotNull(g.homeStarter)</code> 단언을 지워야 합니다. 월요일 휴식일과 시즌(3~11월) 밖에는 <code>Schedule_Day</code>가 빈 배열이라 다른 날에 받아야 합니다.
+</div>
 
 <div class="callout danger"><span class="t">선수단은 두 번 불러야 다 온다</span>
 <code>Team_Info</code>를 <code>team_info_seq</code>만으로 부르면 <strong>투수만</strong> 돌아옵니다(두산 43명). <code>player_position=1</code>을 붙여야 타자 47명이 옵니다 — <code>0</code>이 투수, <code>0이 아닌 값</code>은 전부 타자입니다. 그래서 선수단 화면은 요청이 <strong>2회</strong>입니다. 그리고 목록에는 <code>seq</code>·<code>name</code>·<code>c_number</code>·<code>img</code> 넷뿐입니다 — <strong>포수·내야수·외야수 구분은 목록에 없고 선수 상세에만 있습니다</strong>. 포지션별로 묶으려면 90명을 각각 조회해야 하므로, 이 앱은 투수/타자 2단으로만 나눕니다.
@@ -116,12 +120,12 @@ jq '.data.player_info | {pos: .player_detail.c_position, month: .record.month[-1
 - `img_s`·`player_photo`가 `http://`로 오는가 — 그대로 쓰면 Android 기본 설정에서 차단됩니다(`https`로 바꿔 실음)
 
 <div class="callout danger"><span class="t">라이브는 경기 날에만 확인 가능</span>
-진행 중 경기의 <code>state</code>는 <code>i</code>입니다(2026-09-15 18:31 실측). 시작 직후 목록 행은 점수 <code>"0"</code>, <code>inning: "bs1_1"</code>, <code>detail</code>에 볼카운트·주자·현재 투수/타자가 채워지고, 상세의 <code>game_result</code>는 종료 전까지 <code>"1회초"</code> 같은 라벨입니다. <strong>경기일 18:30 이후</strong>에 아래로 직접 한 번 더 보고 <code>fixtures/schedule_day_live.json</code>으로 저장하세요(Step 3 테스트가 씁니다).
+진행 중 경기의 <code>state</code>는 <code>i</code>입니다(2026-09-15 18:31 실측). 시작 직후 목록 행은 점수 <code>"0"</code>, <code>inning: "bs1_1"</code>, <code>detail</code>에 볼카운트·주자·현재 투수/타자가 채워지고, 상세의 <code>game_result</code>는 종료 전까지 <code>"1회초"</code> 같은 라벨입니다. <strong>경기가 진행 중일 때</strong> 아래로 직접 한 번 더 보고 <code>fixtures/schedule_day_live.json</code>으로 저장하세요 — Step 3의 라이브 매핑 테스트가 이 파일을 쓰는데, 이닝 라벨이 <code>"N회초"</code>·<code>"N회말"</code> 형태인지만 정규식으로 보므로 <strong>몇 회에 캡처했는지는 상관없습니다</strong>. 진행 중(<code>state:"i"</code>) 행이 하나라도 들어 있기만 하면 됩니다. 경기 시간이 아니라면 이 파일 없이 진행하고 경기일에 다시 저장·재실행하세요.
 <br><br>
 <code>watch -n 30 'wt /live/Schedule_Day/$(date +%Y%m%d) | jq ".data.Schedule_Day[] | {state, inning, home_score, away_score}"'</code>
 </div>
 
-<div class="checkpoint"><span class="t"></span> <code>fixtures/</code>에 <strong>12개 JSON</strong>(+ 경기일에 <code>schedule_day_live.json</code>)이 저장됐고, 위 목록을 눈으로 확인했으면 완료. 파일 이름은 Step 3의 <code>MapperTest</code>가 <code>load("…")</code>로 그대로 부르므로 바꾸지 마세요. 이 파일들은 Step 3에서 <code>app/src/test/resources/fixtures/</code>로 옮깁니다.</div>
+<div class="checkpoint"><span class="t"></span> <code>fixtures/</code>에 <strong>12개 JSON</strong>(+ 경기일에 <code>schedule_day_live.json</code>)이 저장됐고, 위 목록을 눈으로 확인했으면 완료. 파일 이름은 Step 3의 <code>MapperTest</code>가 <code>load("…")</code>로 그대로 부르므로 바꾸지 마세요(<code>schedule_month.json</code>만 예외 — 위 구장명 <code>jq</code> 확인용입니다). 라이브 파일은 경기 시간에만 받을 수 있는 13번째 파일이라, 없으면 Step 3에서 라이브 매핑 테스트 하나만 경기일로 미루면 됩니다. 이 파일들은 Step 3에서 <code>app/src/test/resources/fixtures/</code>로 옮깁니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-0">← Step 0</a>

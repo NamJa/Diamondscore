@@ -25,6 +25,7 @@ data class GameEntity(
     val homeRuns: Int?, val awayRuns: Int?,
     val winner: String?,
     val wentExtra: Boolean,
+    val finalInning: Int?,           // 최종/현재 회차 — Step 5·7이 "연장 11회"로 읽는다
     val homeStarter: String?, val awayStarter: String?,
 )
 
@@ -66,13 +67,20 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE gameId = :id")
     suspend fun find(id: Long): GameEntity?          // 쓰기 스킵용 (함정 7: 델타 필드가 없다)
 
+    @Query("SELECT leagueDate FROM games WHERE leagueDate > :date ORDER BY leagueDate LIMIT 1")
+    suspend fun nearestAfter(date: String): String?  // Step 6 날짜 바의 "가장 가까운 경기일로"
+
     @Upsert suspend fun upsertGames(games: List<GameEntity>)
     @Upsert suspend fun upsertInnings(rows: List<InningRunEntity>)
+    @Query("DELETE FROM innings WHERE gameId = :id") suspend fun clearInnings(id: Long)
 
     @Transaction
     suspend fun saveGame(game: GameEntity, innings: List<InningRunEntity>?) {
         upsertGames(listOf(game))
-        if (innings != null) upsertInnings(innings)   // 총점·이닝을 한 트랜잭션으로. 목록 갱신(null)은 이닝을 건드리지 않는다
+        if (innings != null) {                        // 목록 갱신(null)은 이닝을 건드리지 않는다
+            clearInnings(game.gameId)                 // 취소·이닝 축소 시 옛 행이 남지 않게 먼저 비운다 (아래 콜아웃)
+            upsertInnings(innings)                    // 총점·이닝을 한 트랜잭션으로
+        }
     }
 }
 ```
@@ -122,6 +130,16 @@ abstract class DiamondScoreDatabase : RoomDatabase() {
 ```kotlin
 package com.diamondscore.data.local.di
 
+import android.content.Context
+import androidx.room.Room
+import com.diamondscore.data.local.DiamondScoreDatabase
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
 @Module @InstallIn(SingletonComponent::class)
 object DatabaseModule {
     @Provides @Singleton fun db(@ApplicationContext ctx: Context) =
@@ -141,6 +159,7 @@ object DatabaseModule {
 `data/repository/GamesRepository.kt`:
 
 ```kotlin
+@Singleton
 class GamesRepository @Inject constructor(
     private val api: WisetotoApi,
     private val dao: GameDao,
@@ -151,10 +170,13 @@ class GamesRepository @Inject constructor(
     fun observeByTeam(teamId: Long): Flow<List<GameSummary>> =
         dao.observeByTeam(teamId).map { it.map(GameEntity::toSummary) }
 
+    /** Step 6 날짜 바의 "가장 가까운 경기일로" — 프리페치된 Room 행만 보므로 네트워크가 없다. */
+    suspend fun nearestGameDay(after: LocalDate): LocalDate? = dao.nearestAfter(after.toString())?.let(LocalDate::parse)
+
     /** 시즌 = 연도. wisetoto엔 시즌 ID가 없고 순위·프리페치 모두 year로 조회한다. 이 앱에서 `WisetotoApi`를 아는 곳은 data 레이어뿐이다. */
     fun currentSeasonYear(): Int = LocalDate.now(SEOUL).year
 
-    /** 정규시즌 시작일 — Schedule_Day 응답의 league_rank.start (조회 날짜와 무관하게 현재 시즌). 실패 시 null → 팀 필터만 적용. */
+    /** 정규시즌 시작일 — Schedule_Day 응답의 league_rank.start (조회 날짜와 무관하게 현재 시즌). refreshDay가 채워 둔다. */
     private var seasonStart: LocalDate? = null
     private suspend fun seasonStart(): LocalDate? = seasonStart ?: runCatching {
         api.scheduleDay(LocalDate.now(SEOUL).format(apiDay)).body().season?.start?.let(LocalDate::parse)
@@ -162,26 +184,33 @@ class GamesRepository @Inject constructor(
 
     /** 시즌 전체를 월 단위로 받아 Room에 upsert. 3~11월 9회. WBC·시범경기·올스타전은 여기서 걸러진다(함정 8). */
     suspend fun prefetchSeason(year: Int) {
-        val start = seasonStart()
+        // 시작일을 모르면 3월 시범경기(3/12~3/24)가 그대로 들어오고 지울 방법이 없다 → 아무것도 쓰지 말고 워커가 재시도하게 둔다
+        val start = seasonStart() ?: error("league_rank.start를 받지 못했다 — 프리페치를 건너뛴다")
         for (month in 3..11) {
+            // Schedule_Month엔 game_timestamp가 없어 game_date 문자열을 파싱한다(함정 7).
+            // 한 행이 깨져도 그 달 전체가 날아가지 않게 행 단위로 막는다.
             api.scheduleMonth("%04d%02d".format(year, month)).body().games
-                .filter { it.isKboRegular(start) }
-                .forEach { saveSummary(it.toSummary()) }
+                .mapNotNull { row -> runCatching { row.takeIf { it.isKboRegular(start) }?.toSummary() }.getOrNull() }
+                .forEach { saveSummary(it) }
         }
     }
 
     /** 하루치 최신화 — 오늘 화면 진입 시 1회, 라이브 중엔 20초마다(Step 6). */
     suspend fun refreshDay(date: LocalDate) {
-        val start = seasonStart()
-        api.scheduleDay(date.format(apiDay)).body().games
-            .filter { it.isKboRegular(start) }
-            .forEach { saveSummary(it.toSummary()) }
+        val day = api.scheduleDay(date.format(apiDay)).body()
+        // 같은 응답에 league_rank가 실려 오므로 시즌 시작일을 따로 조회하지 않는다 — 폴링 1회 = 요청 1개
+        val start = day.season?.start?.let(LocalDate::parse)?.also { seasonStart = it } ?: seasonStart
+        day.games.filter { it.isKboRegular(start) }.forEach { saveSummary(it.toSummary()) }
     }
 
     private suspend fun saveSummary(s: GameSummary, innings: List<InningRuns>? = null) {
-        val entity = s.toEntity()
+        val old = dao.find(s.id)
+        // 선발은 Schedule_Day에만 있다 — Schedule_Month와 상세 응답은 null이므로 덮어쓰지 말고 기존 값을 보존한다
+        val entity = s.toEntity().let {
+            it.copy(homeStarter = it.homeStarter ?: old?.homeStarter, awayStarter = it.awayStarter ?: old?.awayStarter)
+        }
         // 함정 7: 변경 감지 필드가 없다 → 기존 행과 같으면 DB 쓰기 스킵 (불필요한 Flow 재방출 방지)
-        if (innings == null && dao.find(s.id) == entity) return
+        if (innings == null && old == entity) return
         dao.saveGame(entity, innings?.map { InningRunEntity(s.id, it.number, it.home, it.away) })
     }
 
@@ -220,7 +249,7 @@ data class DetailMeta(
 ```
 
 <div class="callout warn"><span class="t">취소 경기 재조회 시 옛 이닝이 남지 않게</span>
-노게임은 <code>state:"c"</code>로 바뀌면서 매퍼가 이닝을 빈 배열로 만듭니다(Step 3 함정 3). <code>saveGame</code>은 upsert라 이전에 저장된 부분 이닝 행이 남을 수 있으니, <code>innings</code>가 비어 있고 상태가 <code>CANCELED</code>면 <code>DELETE FROM innings WHERE gameId = :id</code>를 한 번 태우세요(<code>GameDao</code>에 <code>clearInnings</code> 추가). 화면은 <code>CANCELED</code>면 라인스코어를 그리지 않으므로 표시에는 영향이 없지만 DB를 깨끗이 두는 편이 낫습니다.
+노게임은 <code>state:"c"</code>로 바뀌면서 매퍼가 이닝을 빈 배열로 만듭니다(Step 3 함정 3). 그런데 <code>upsert</code>만 하면 3회까지 저장해 둔 부분 이닝 행이 그대로 남습니다 — Step 7의 상세 화면은 상태와 상관없이 라인스코어를 그리므로 “취소” 라벨 아래 1·2·3회 점수가 유령처럼 남습니다. 그래서 위 <code>saveGame</code>은 이닝을 받을 때마다 <code>clearInnings</code>로 먼저 비우고 다시 넣습니다(이닝이 줄어드는 정정도 같이 막힙니다). 목록 갱신은 <code>innings = null</code>이라 이 경로를 타지 않습니다.
 </div>
 
 ### 엔티티 ↔ 도메인 매퍼
@@ -240,7 +269,7 @@ fun GameEntity.toSummary() = GameSummary(
     away = TeamRef(awayTeamId, teamNameKo(awayTeamId, awayName), awayCode),
     homeRuns = homeRuns, awayRuns = awayRuns,
     winner = winner?.let(Winner::valueOf),
-    wentExtra = wentExtra,
+    wentExtra = wentExtra, finalInning = finalInning,
     venueShort = KBO_TEAMS[homeTeamId]?.home,
     homeStarter = homeStarter, awayStarter = awayStarter,
 )
@@ -251,7 +280,8 @@ fun GameSummary.toEntity() = GameEntity(
     homeTeamId = home.id, homeName = home.nameKo, homeCode = home.code,
     awayTeamId = away.id, awayName = away.nameKo, awayCode = away.code,
     homeRuns = homeRuns, awayRuns = awayRuns, winner = winner?.name,
-    wentExtra = wentExtra, homeStarter = homeStarter, awayStarter = awayStarter,
+    wentExtra = wentExtra, finalInning = finalInning,
+    homeStarter = homeStarter, awayStarter = awayStarter,
 )
 ```
 
@@ -259,7 +289,7 @@ fun GameSummary.toEntity() = GameEntity(
 
 ## 5. 시즌 프리페치 워커
 
-`data/sync/PrefetchWorker.kt` — 앱 시작 시 1회, 이후 하루 1회.
+`data/sync/PrefetchWorker.kt` — 설치 후 첫 실행에 1회, 이후 하루 1회.
 
 ```kotlin
 @HiltWorker
@@ -274,11 +304,187 @@ class PrefetchWorker @AssistedInject constructor(
 }
 ```
 
-`App.kt`의 `onCreate`에서 unique work로 등록합니다(네트워크 제약 + 지수 backoff). 잔여 경기 재편성(9월 이후 새 seq)은 하루 1회 재실행으로 자연히 들어옵니다 — 이미 있는 행은 동등 비교로 스킵되므로 비용이 거의 없습니다.
+`@HiltWorker`는 앱이 `HiltWorkerFactory`를 넘겨줘야 만들어집니다 — 기본 팩토리는 `(Context, WorkerParameters)` 2인자 생성자만 찾으므로, 이 배선이 없으면 빌드는 되는데 실행 시 logcat에 `Could not instantiate com.diamondscore.data.sync.PrefetchWorker`만 남고 작업이 FAILED로 끝납니다. **Step 2 §5에서 만든 `App.kt`를 이렇게 바꿉니다** — 워커 팩토리 제공과 등록을 한 파일에서 끝냅니다(완전한 코드).
+
+```kotlin
+package com.diamondscore
+
+import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.BackoffPolicy
+import androidx.work.Configuration
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.diamondscore.data.sync.PrefetchWorker
+import dagger.hilt.android.HiltAndroidApp
+import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+
+// 이름은 DiamondScoreApplication이다 — Step 9의 @Composable fun DiamondScoreApp()과 충돌하지 않게(Step 2 §5).
+@HiltAndroidApp
+class DiamondScoreApplication : Application(), Configuration.Provider {
+
+    @Inject lateinit var workerFactory: HiltWorkerFactory
+
+    // WorkManager가 @HiltWorker를 만들 수 있는 유일한 통로. 이 프로퍼티가 없으면 워커는 생성 단계에서 실패한다.
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().setWorkerFactory(workerFactory).build()
+
+    override fun onCreate() {
+        super.onCreate()
+        val request = PeriodicWorkRequestBuilder<PrefetchWorker>(1, TimeUnit.DAYS)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.MINUTES)   // Result.retry()가 타는 간격
+            .build()
+        // KEEP: 이미 예약돼 있으면 주기를 초기화하지 않는다. 첫 실행 1회 + 하루 1회가 이 한 줄로 끝난다.
+        WorkManager.getInstance(this)
+            .enqueueUniquePeriodicWork("prefetch-season", ExistingPeriodicWorkPolicy.KEEP, request)
+    }
+}
+```
+
+WorkManager는 기본적으로 `androidx.startup`으로 자기 자신을 초기화하므로, 그 초기화기를 꺼야 위 `Configuration`이 쓰입니다. `AndroidManifest.xml`의 `<manifest>`에 `xmlns:tools`를 선언하고 `<application>` 안에 이 블록을 넣습니다.
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application android:name=".DiamondScoreApplication" ... >
+
+        <!-- WorkManager 기본 초기화 제거 — Configuration.Provider가 대신 설정을 넘긴다 -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+    </application>
+</manifest>
+```
+
+<div class="callout warn"><span class="t">이 셋은 세트다</span>
+<code>Configuration.Provider</code> 구현 · 매니페스트의 <code>tools:node="remove"</code> · <code>enqueueUniquePeriodicWork</code> 호출 — 하나라도 빠지면 워커는 <strong>크래시 없이 그냥 안 돕니다</strong>. 확인은 logcat의 <code>WM-</code> 태그와 <code>adb shell dumpsys jobscheduler | grep diamondscore</code>로 합니다.
+</div>
+
+잔여 경기 재편성(9월 이후 새 seq)은 하루 1회 재실행으로 자연히 들어옵니다 — 이미 있는 행은 동등 비교로 스킵되므로 비용이 거의 없습니다.
 
 ## 6. 통합 테스트
 
-`app/src/test/.../RepositoryTest.kt` — MockWebServer로 9개 월을 순회하는지, 3월 fixture의 WBC·시범경기 행이 Room에 들어가지 않는지, 같은 응답을 두 번 받으면 DB 쓰기가 한 번뿐인지, 오프라인에서 Room이 읽히는지 검증합니다. `code:"01"` 봉투를 주면 `WisetotoException`으로 실패하고 Room이 비어 있지 않은지도 함께 봅니다.
+`app/src/test/java/.../RepositoryTest.kt` — 네트워크만 MockWebServer로 바꿔 끼우고 Step 1의 fixture를 그대로 돌려줍니다. **DAO는 인메모리 가짜를 씁니다** — JVM 테스트에는 SQLite가 없어 Room을 띄우려면 Robolectric이 필요하고, 여기서 보려는 것은 Room이 아니라 Repository의 필터·쓰기 스킵·병합 규칙이기 때문입니다(Room 자체는 아래 체크포인트에서 실기기로 확인합니다).
+
+```kotlin
+package com.diamondscore.data.repository
+
+import com.diamondscore.data.local.dao.GameDao
+import com.diamondscore.data.local.entity.GameEntity
+import com.diamondscore.data.local.entity.InningRunEntity
+import com.diamondscore.data.remote.WisetotoApi
+import com.diamondscore.data.remote.WisetotoException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.mockwebserver.Dispatcher
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
+import org.junit.After
+import org.junit.Test
+import retrofit2.Retrofit
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.time.LocalDate
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+/** Room 없이 도는 DAO. `saveGame`은 인터페이스의 기본 구현이라 그대로 실행된다(= 이닝 비우기도 같이 검증된다). */
+class FakeGameDao : GameDao {
+    val rows = linkedMapOf<Long, GameEntity>()
+    val innings = linkedMapOf<Long, List<InningRunEntity>>()
+    var gameWrites = 0
+    override suspend fun find(id: Long) = rows[id]
+    override suspend fun nearestAfter(date: String) = rows.values.map { it.leagueDate }.filter { it > date }.minOrNull()
+    override suspend fun upsertGames(games: List<GameEntity>) { gameWrites++; games.forEach { rows[it.gameId] = it } }
+    override suspend fun upsertInnings(rows: List<InningRunEntity>) =
+        rows.groupBy { it.gameId }.forEach { (id, r) -> innings[id] = innings[id].orEmpty() + r }
+    override suspend fun clearInnings(id: Long) { innings -= id }
+    override fun observeByDate(date: String): Flow<List<GameEntity>> = flowOf(rows.values.filter { it.leagueDate == date })
+    override fun observeByTeam(teamId: Long): Flow<List<GameEntity>> =
+        flowOf(rows.values.filter { it.homeTeamId == teamId || it.awayTeamId == teamId })
+    override fun observeGame(id: Long): Flow<GameEntity?> = flowOf(rows[id])
+    override fun observeInnings(id: Long): Flow<List<InningRunEntity>> = flowOf(innings[id].orEmpty())
+}
+
+class RepositoryTest {
+    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true; explicitNulls = false }
+    private val server = MockWebServer()
+    private val dao = FakeGameDao()
+    private val api = Retrofit.Builder()
+        .baseUrl(server.url("/"))
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build().create(WisetotoApi::class.java)
+    private val repo = GamesRepository(api, dao)
+
+    private fun fixture(name: String) =
+        javaClass.classLoader!!.getResourceAsStream("fixtures/$name")!!.bufferedReader().readText()
+
+    /** 경로 조각 → 응답 본문. 라우트 이름이 대소문자를 가리므로 조각도 그대로 쓴다(함정 1). */
+    private fun serve(vararg bodyByPath: Pair<String, String>) {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                bodyByPath.firstOrNull { request.path.orEmpty().contains(it.first) }
+                    ?.let { MockResponse().setBody(it.second) } ?: MockResponse().setResponseCode(404)
+        }
+    }
+
+    @After fun tearDown() = server.shutdown()
+
+    @Test fun `프리페치는 9개 월을 돌고 시범경기·WBC는 저장하지 않는다`() = runTest {
+        serve("Schedule_Day/" to fixture("schedule_day_finished.json"),
+              "Schedule_Month/" to fixture("schedule_month_march.json"))
+        repo.prefetchSeason(2026)
+        assertEquals(10, server.requestCount)                     // 시즌 시작일 1회 + 3~11월 9회
+        assertTrue(dao.rows.isNotEmpty())
+        val start = LocalDate.parse("2026-03-27")                 // league_rank.start
+        assertTrue(dao.rows.values.none { LocalDate.parse(it.leagueDate).isBefore(start) })
+    }
+
+    @Test fun `같은 응답을 두 번 받으면 DB 쓰기는 한 번뿐이다`() = runTest {
+        serve("Schedule_Day/" to fixture("schedule_day_finished.json"))
+        repo.refreshDay(LocalDate.of(2026, 9, 13))
+        val writes = dao.gameWrites
+        repo.refreshDay(LocalDate.of(2026, 9, 13))
+        assertEquals(writes, dao.gameWrites)                      // 함정 7: 델타 필드가 없으니 동등 비교로 스킵
+    }
+
+    @Test fun `상세 갱신은 목록이 채운 선발투수를 지우지 않는다`() = runTest {
+        serve("Schedule_Day/" to fixture("schedule_day_finished.json"),
+              "schedule/" to fixture("game_final.json"))          // 490691 — 같은 날 경기
+        repo.refreshDay(LocalDate.of(2026, 9, 13))
+        val starter = dao.rows[490691L]!!.homeStarter
+        assertNotNull(starter)                                    // Schedule_Day가 채웠다
+        repo.refreshGame(490691L)
+        assertEquals(starter, dao.rows[490691L]!!.homeStarter)    // 상세 응답엔 선발이 없다 → 보존
+    }
+
+    @Test fun `code 01 봉투는 예외가 되고 기존 행은 살아 있다`() = runTest {
+        serve("Schedule_Day/" to fixture("schedule_day_finished.json"))
+        repo.refreshDay(LocalDate.of(2026, 9, 13))
+        serve("Schedule_Day/" to """{"result":"fail","code":"01","message":"잘못된 접근"}""")
+        assertFailsWith<WisetotoException> { repo.refreshDay(LocalDate.of(2026, 9, 13)) }
+        assertTrue(dao.rows.isNotEmpty())                         // 실패가 캐시를 비우지 않는다
+    }
+}
+```
 
 ```bash
 ./gradlew :app:testDebugUnitTest

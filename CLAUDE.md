@@ -38,8 +38,8 @@ Gradle commands the labs instruct the reader to run, once an `app/` project exis
 - Labs use HTML blocks styled by `docs/assets/codelab.css`: `<div class="chips">` header, `<div class="callout tip|warn|danger|ok">`, `<div class="checkpoint">`, `<div class="pager">` footer. Match the existing pattern.
 - `docs/_sidebar.md` is the nav; `docs/index.html` holds the docsify config and a progress plugin keyed on `/labs/step-N` paths. `.nojekyll` must stay.
 - Plan work items are tracked inline as `DS-nnn` IDs (e.g. `DS-001` = the app's first `Schedule_Day` call returns `code "00"` on a real device). `DS-002a/b` (live start/finish schema) are done as of 2026-09-15. Reference existing IDs rather than inventing new tracking.
-- Consistency invariants that break silently: the canonical trap list is **8 items** and the count is repeated in Step 3 (chips, intro, danger callout) and plan §3.4/§8/§9 — add a trap in all of them; Step 1's fixture filenames must match the `load(...)` names in Step 3's `MapperTest`; plan section cross-references (`§3.4-N`, `§4.2`) shift when the trap list is renumbered — grep them after any renumbering.
-- The plan describes the data source as observed on 2026-09-14/15. Re-verify against the live API before "correcting" a documented quirk — several counter-intuitive facts (three mandatory query keys, WBC rows in `Schedule_Month`, `end_summary` arriving minutes after the final) were confirmed by scripted checks, not assumed.
+- Consistency invariants that break silently: the canonical trap list (plan §3.4) is **12 items** — ①–⑧ games/rank (observed 2026-09-14/15), ⑨–⑫ teams/players (observed 2026-09-18) — and the count is repeated in Step 3 (chips, intro, danger callout), `docs/README.md` (intro, Step 3 card) and plan §3.4/§8/§9 — add a trap in all of them; Step 1's fixture filenames must match the `load(...)` names in Step 3's `MapperTest`; plan section cross-references (`§3.4-N`, `§4.2`) shift when the trap list is renumbered — grep them after any renumbering.
+- The plan describes the data source as observed on 2026-09-14/15 (games, rank) and 2026-09-18 (teams, players). Re-verify against the live API before "correcting" a documented quirk — several counter-intuitive facts (three mandatory query keys, WBC rows in `Schedule_Month`, `end_summary` arriving minutes after the final) were confirmed by scripted checks, not assumed.
 
 ## Architecture (as specified in the plan and labs)
 
@@ -63,7 +63,7 @@ Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (2
 - Navigation 3 (`NavDisplay` + typed `NavKey`), never `navigation-compose`.
 - kotlinx.serialization `Json` must have `ignoreUnknownKeys = true` and `explicitNulls = false`; wisetoto responses carry cache noise fields and `null` for unplayed innings. Every response is an `Envelope<T>` — HTTP is 200 even on failure; success is `code == "00"` (`Envelope.body()` throws otherwise).
 
-## wisetoto data traps (plan §3.4 — mapping these naively is a bug)
+## wisetoto data traps (plan §3.4 is canonical and numbered — mapping these naively is a bug)
 
 - Route names are case-sensitive (`Schedule_Day`, `Schedule_Month`, `League_Rank`, `Team_Info`); date args are `yyyyMMdd`/`yyyyMM` only. All three query keys `os`, `version`, `lang` are mandatory (values unchecked); any missing → `code "01"` with HTTP 200.
 - `Schedule_Day`/`Schedule_Month` are not KBO-only: March carries WBC games, 3/12–3/24 preseason, July the All-Star game, with no league field on rows. Keep only rows whose both team IDs are in `KBO_TEAMS` and whose date is ≥ `league_rank.start` from the `Schedule_Day` response (`isKboRegular`).
@@ -75,7 +75,9 @@ Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (2
 - Stadium names are not normalized (23 spellings); cards use the home city from `KBO_TEAMS`, only the detail shows `stadium_name` verbatim.
 - `game_date` is a display string; use `game_timestamp` (epoch seconds) and convert to `Asia/Seoul`. `Schedule_Month` rows lack the timestamp — parse `yyyy-MM-dd HH:mm:ss` as Seoul.
 - Team IDs are wisetoto `team_info_seq` (315 SSG, 316 두산, 317 롯데, 318 삼성, 319 한화, 320 KIA, 321 키움, 322 LG, 2107 NC, 2674 KT). Season = year; there is no season ID. `schedule_info_seq` is a global cross-sport counter — never compute it, always take it from a list response.
-- Field-name typos (`team_inf_seq`, `team_ifno_seq`, `player_count` = games) are the server's; keep them in `@SerialName`.
+- A roster needs **two** `Team_Info` calls (`player_position` 0 = pitchers, anything else = batters); list rows carry no position, and `c_number` is a string that **repeats inside one team** (두산 has two #48 pitchers) — the list key is `player_info_seq`, never the number. `team_history` entries are split by a lowercase `l`, not a pipe; photo URLs come as `http://` and must be promoted to `https`.
+- `Player_Info`'s `record` schema splits on `c_position` (pitcher vs batter; the same key can differ — `h` is hits allowed vs hits), so the domain splits it with a `sealed interface`. `month "13"` is the season total, and it does **not** equal the sum of the monthly rows — use the total row as sent. Innings come in two notations (`"29 2/3"` mixed fraction in monthly rows, `ip "0.2"` = ⅔ inning in `previous5`), `previous5`'s `era`/`avg` are running season totals rather than that game's, and rows with every field `null` are mixed in. `player_detail` has no team field — the caller passes the team in.
+- Field-name typos (`team_inf_seq`, `team_ifno_seq`, `rib` = RBI, `player_count` = games) are the server's; keep them in `@SerialName`.
 
 ## wisetoto access notes
 

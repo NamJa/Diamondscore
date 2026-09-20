@@ -58,9 +58,9 @@ SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(
 
 ### 1.3 화면 명세
 
-**경기 탭**: 상단에 오늘/이전·다음 날짜/날짜 선택기(날짜 조회 설계는 §3.2). 본문은 진행 중 → 예정 →
+**경기 탭**: 상단에 오늘/이전·다음 날짜/날짜 선택기(Codelabs 미구현 — 이전·다음 화살표로 대체, 날짜 조회 설계는 §3.2). 본문은 진행 중 → 예정 →
 종료 순 또는 시작 시각 순. 카드는 팀·로고·점수·상태·경기장·시작 시각, 진행 중은 라이브 강조와 마지막
-갱신 시각. 빈 날짜는 빈 상태 + 가장 가까운 경기일로 이동하는 액션.
+갱신 시각(Codelabs 미구현 — 오프라인 배너로 대체). 빈 날짜는 빈 상태 + 가장 가까운 경기일로 이동하는 액션.
 
 **경기 상세**:
 - **스코어보드**: 팀, 총점, 경기 상태, 시작 시각·경기장. **원정팀 먼저 표시**(KBO 관행).
@@ -69,7 +69,8 @@ SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(
   득점 화면을 먼저 완성하고 다음 경기일에 라이브 검증과 함께 붙인다. 그 전에는 자리도 만들지 않는다.
 - **탭**: 요약 / 문자중계(P1) / 라인업·기록(P1). 숨겨진 탭이 딥링크·back stack을 깨지 않게 한다.
 
-**순위**: 시즌(연도) 선택, 순위·경기수·**승-패-무**(`draw_count` 직접)·승률·게임차·연속. 득실차·진출권 배지는 공급되지 않으므로 컬럼을 두지 않고, 5위 뒤 진출선은 UI 고정 규칙으로 그린다.
+**순위**: 현재 시즌 고정 — 과거 시즌 전환은 P1. 순위·팀·**승-패-무**(`draw_count` 직접)·승률·게임차·연속 6열.
+경기수는 승·패·무 합으로 읽히므로 컬럼을 두지 않는다(도메인 `Standing.games`는 유지). 득실차·진출권 배지는 공급되지 않으므로 컬럼을 두지 않고, 5위 뒤 진출선은 UI 고정 규칙으로 그린다.
 공급되지 않는 컬럼은 `-`가 아니라 컬럼 자체를 숨긴다. 동률은 앱에서 재계산하지 않고 공급자 순서를 따른다.
 
 **팀**: 10개 구단 목록 + 즐겨찾기. 팀 상세는 기본 정보·구장·감독·최근/다음 경기 + **선수단 진입점**. 로고 허가가
@@ -88,8 +89,9 @@ SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(
 틴트(`teamTint`)는 팀명 라벨·등번호에, 앱 액센트(`primary`)는 라이브·탭·링크·대표 기록에 쓴다. 구단 원색을
 글자에 그대로 쓰면 두산(`#232A63`)은 다크에서, KIA(`#EA0029`)는 라이트에서 대비가 무너진다.
 
-**즐겨찾기·설정**: 즐겨찾는 팀 목록, 테마(시스템/라이트/다크), 데이터 출처(wisetoto)·개인정보·
-오픈소스 라이선스 표기. 알림은 P1.
+**즐겨찾기·설정**: 즐겨찾는 팀 목록, 테마(시스템/라이트/다크), 라이브 갱신 간격(20초 기본 / 30초 / 1분 — 공식 앱 4초보다 느린 값만), 데이터 출처(wisetoto)·개인정보·
+오픈소스 라이선스 표기. 알림은 P1이지만 **설정 화면에만 비활성 placeholder로 표기한다** — 준비 중임을 알리는
+것이 사용자에게 유용하고 목업에도 있으므로, §1.6 "P1 항목의 UI 자리를 만들지 않는다"의 유일한 예외다.
 
 **표시 원칙 (모든 화면 공통)**:
 - **UI에서 추정값을 생성하지 않는다.** 서버가 준 값만 표시한다. 이닝 라벨은 `inning` 코드 파싱으로만 만들고, 파싱에 실패하면 "진행 중"으로 둔다(§4.1).
@@ -117,7 +119,10 @@ SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(
 | outline / outlineVariant | `#191C24` / `#15171E` | `#E4E0D8` / `#ECE8E0` |
 | primary(라이브·강조) | `#FF2D4B` | `#D21F3C` |
 | gold(진출권·즐겨찾기) | `#E7B24A` | `#B98900` |
-| win / loss | `#39D98A` / `#C83250` | `#1E9E5E` / `#C83250` |
+| win / loss | `#39D98A` / `#FF6B7F` | `#1E9E5E` / `#C83250` |
+| textSecondary(팀명·보조 라벨) | `#C7CBD6` | `#3A3833` |
+| textTertiary(캡션·미세 수치) | `#6B7080` | `#8A867D` |
+| accentSoft(한 톤 낮춘 액센트 — loss와 값이 같아도 역할이 달라 토큰을 따로 둔다) | `#FF6B7F` | `#C83250` |
 
 - 폰트: **Bebas Neue**(스코어·헤더·큰 숫자) + **Archivo + Noto Sans KR**(본문·UI), 표의 작은 숫자는 등폭(tabular).
 - 리그 레드 `#AE0D1D`는 브랜드 기준색, UI 액센트는 대비를 위해 `#FF2D4B`(다크)/`#D21F3C`(라이트).
@@ -140,7 +145,7 @@ SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(
 | 접근성 자동 검사 | 차단 이슈 0건 |
 | 핵심 흐름 UI 테스트 | 100% 통과 |
 
-신선도 SLO는 라이브 스키마 관측(`DS-002`, §8) 이후 실제 갱신 지연에 맞춰 조정한다.
+신선도 SLO는 라이브 스키마 관측(`DS-002a/b`, §8)에서 나온 실제 갱신 지연에 맞춰 조정한다.
 
 **MVP 수용 기준**:
 - 오늘 및 선택 날짜의 모든 KBO 경기를 볼 수 있다.
@@ -148,7 +153,7 @@ SofaScore는 2026-09-14 실측에서 연장 라인스코어 오류가 확인돼(
 - 경기 → 팀, 순위 → 팀 이동과 back 문맥 복원이 된다.
 - 네트워크 단절 시 마지막 성공 데이터와 갱신 시각이 보인다.
 - 데이터 결측·일부 필드 부재에도 크래시하지 않는다.
-- P1 항목(볼카운트·라인업·선수 기록 등)의 UI 자리를 만들지 않는다.
+- P1 항목(볼카운트·주자·라인업·문자중계·개인 순위 등)의 UI 자리를 만들지 않는다(예외: 설정의 알림 placeholder, §1.3).
 
 ---
 
@@ -220,7 +225,8 @@ wisetoto API는 **정상 접근되며 실제 KBO 데이터를 반환한다.**
 ### 2.3 커버리지
 
 SofaScore 시절의 "득점 전용(runs-only)" 제약이 사라졌다. **제공 범위가 제품 범위(§1.2)를 결정**하는 원칙은
-그대로이며, MVP는 여전히 득점 중심으로 완결하고 나머지는 P1로 미룬다.
+그대로이며, MVP는 득점 화면에 더해 팀·선수 화면까지 완결하고 진행 중 경기에서만 검증되는
+볼카운트·문자중계·라인업은 P1로 미룬다.
 
 | 제공됨 ✅ (MVP 사용) | 제공됨 ✅ (P1 — 데이터는 있으나 MVP 화면 없음) | 제공되지 않음 ❌ |
 |---|---|---|
@@ -236,8 +242,9 @@ SofaScore 시절의 "득점 전용(runs-only)" 제약이 사라졌다. **제공 
 
 ### 2.4 라이브 스키마 — 2026-09-15 18:31 KST 실측 (경기 시작 직후)
 
-780경기의 `state` 분포는 `a`(예정) 82 · `e`(종료) 630 · `c`(취소/노게임) 68이었고, 09-15 18:30 경기 4건을 1분 간격으로
-캡처해 **진행 중 값 `i`를 확인**했다. 시작 1분 뒤(18:31) 관측:
+KBO 필터(§3.2)를 통과한 **782경기**의 `state` 분포는 **2026-09-20 15:00 KST 재실측** 기준 `e`(종료) 653 ·
+`c`(취소/노게임) 70 · `a`(예정) 59다 — 시즌이 진행 중이라 `e`/`a` 비율은 날마다 바뀌므로 기준일과 함께 읽는다.
+09-15 18:30 경기 4건을 1분 간격으로 캡처해 **진행 중 값 `i`를 확인**했다. 시작 1분 뒤(18:31) 관측:
 
 | 항목 | 관측 |
 |---|---|
@@ -272,7 +279,7 @@ Base URL: `https://bsrest.wisetoto.com/` · 공통 쿼리 `os=a&version=4.1.3&la
 | # | 용도 | 엔드포인트 | 응답 규모 |
 |---|---|---|---|
 | 1 | **날짜별 경기 목록 + 라이브 갱신** | `GET /live/Schedule_Day/{yyyyMMdd}` | 5 KB, 하루 최대 5경기 (+ 3월엔 WBC 등 비KBO 경기) |
-| 2 | 월별 일정(프리페치) | `GET /live/Schedule_Month/{yyyyMM}` (`&team_info_seq=&home_away=h\|a` 선택) | 34 KB, ~110~130행 (비KBO 포함) |
+| 2 | 월별 일정(프리페치) | `GET /live/Schedule_Month/{yyyyMM}` (`&team_info_seq=&home_away=h\|a` 선택) | 34 KB, 성수기 월 ~130행 · 비수기(11월 등)는 훨씬 적다 — 3~11월 합계 890행 (비KBO 포함) |
 | 3 | 경기 상세(라인스코어·R/H/E·투수 요약·진행 상황) | `GET /live/schedule/{seq}` | 5~8 KB |
 | 4 | 순위 | `GET /rank/League_Rank?year={YYYY}` | 3 KB, 10 rows |
 | 5 | 팀 정보(정식 명칭·홈구장·감독·연혁) + **선수단** | `GET /extra/Team_Info?team_info_seq={id}&player_position={0\|1}` | 8 KB · **팀당 2회**(0=투수, 1=타자) |
@@ -300,7 +307,7 @@ Base URL: `https://bsrest.wisetoto.com/` · 공통 쿼리 `os=a&version=4.1.3&la
 오늘 화면 진입:   Schedule_Day/{오늘} 1회 → upsert            ← 점수·상태 최신화 (라이브면 20초마다)
 ```
 
-- **목록은 KBO 전용이 아니다.** 3월엔 WBC(한국·체코·호주…, 도쿄), 3/12~3/24 시범경기(`league_info_seq 186`), 7월엔 올스타전(드림·나눔)이 같은 목록에 섞여 온다(2026년 3~11월 890행 중 108행). 행에는 리그 필드가 없으므로 **양 팀이 모두 KBO 10구단이고 날짜가 `Schedule_Day`의 `league_rank.start`(2026-03-27) 이후**인 행만 저장한다 → 782행(종료 630·취소 70·예정 82). 포스트시즌은 같은 규칙을 통과한다
+- **목록은 KBO 전용이 아니다.** 3월엔 WBC(한국·체코·호주…, 도쿄), 3/12~3/24 시범경기(`league_info_seq 186`), 7월엔 올스타전(드림·나눔)이 같은 목록에 섞여 온다(2026년 3~11월 890행 중 108행). 행에는 리그 필드가 없으므로 **양 팀이 모두 KBO 10구단이고 날짜가 `Schedule_Day`의 `league_rank.start`(2026-03-27) 이후**인 행만 저장한다 → 782행(**2026-09-20 15:00 KST 실측** — 종료 653·취소 70·예정 59. 시즌 진행 중이라 종료/예정 비율은 날마다 바뀐다). 포스트시즌은 같은 규칙을 통과한다
 - 잔여 경기 재편성은 새 seq로 들어오지만 날짜 조회에 즉시 반영된다. 하루 1회 현재 월과 다음 월만 다시 받으면 된다
 - 과거 시즌은 같은 경로로 조회된다(2015년까지 확인). 시즌 전환은 `year`만 바꾼다
 - `Schedule_Month` 행에는 `game_timestamp`가 없고 `game_date` 문자열만 있다 → `yyyy-MM-dd HH:mm:ss`를 **`Asia/Seoul`로 파싱**한다
@@ -492,6 +499,7 @@ data class GameSummary(
     val homeRuns: Int?, val awayRuns: Int?,   // 경기 전·취소는 null (0이 아님)
     val winner: Winner?,            // FINAL일 때만 non-null, 동점 종료 = DRAW
     val wentExtra: Boolean,         // inning 코드 번호 > 9
+    val finalInning: Int? = null,   // 마지막(진행 중이면 현재) 이닝 — "연장 11회" 표기용
     val venueShort: String? = null, // 홈 도시 — 앱 리소스
     val homeStarter: String? = null, val awayStarter: String? = null,   // 선발 (Schedule_Day)
 )
@@ -530,11 +538,10 @@ data class TeamDetail(           // 팀 상세와 팀 정보(선수단) 두 화�
 )
 
 // ── 선수 (Player_Info) ──
-enum class PlayerKind { PITCHER, BATTER }
-
+// 투수/타자 분기는 아래 PlayerRecord sealed가 담당한다 — 프로필에는 종류 필드를 두지 않는다
 data class PlayerProfile(
-    val id: Long, val name: String, val number: Int?, val photoUrl: String?,
-    val kind: PlayerKind, val position: String?, val bats: String?,
+    val name: String, val number: Int?, val photoUrl: String?,
+    val position: String?, val bats: String?,
     val birthDay: LocalDate?, val heightCm: Int?, val weightKg: Int?,
     val school: String?, val joinYear: Int?, val draft: String?,
     val signingBonus: String?, val salary: String?, val nationality: String?,
@@ -552,7 +559,7 @@ data class BattingGame(val date: LocalDate?, val opponent: String, val order: St
                        val cumulativeAvg: String?)
 data class PitchingGame(val date: LocalDate?, val opponent: String, val innings: String?,
                         val pitches: Int?, val hits: Int?, val strikeOuts: Int?,
-                        val earnedRuns: Int?, val cumulativeEra: String?)
+                        val cumulativeEra: String?)   // er는 실측 제공되나(§3.3) 표에 쓰지 않아 모델에 두지 않는다
 
 sealed interface PlayerRecord {   // 한 라우트가 두 스키마를 주므로 when을 강제한다
     data class Batting(val months: List<BattingRow>, val recent: List<BattingGame>) : PlayerRecord
@@ -575,7 +582,7 @@ fun mapStatus(state: String?): GameStatus = when (state) {
     "i"  -> GameStatus.LIVE            // 2026-09-15 실측 (§2.4)
     "e"  -> GameStatus.FINAL
     "c"  -> GameStatus.CANCELED
-    else -> GameStatus.UNKNOWN.also { logUnknownState(state) }
+    else -> GameStatus.UNKNOWN
 }
 
 private val INNING_CODE = Regex("""bs(\d+)_([12])""")
@@ -632,10 +639,11 @@ Android 공식 가이드의 계층·단방향 흐름·SSOT 원칙을 따른다. 
 com.diamondscore
 ├─ DiamondScoreApp.kt   ← Nav3 back stack + entryProvider (여기만 전체 화면을 안다)
 ├─ core/
-│   ├─ common/          time, KboTeams(순수 표), Result — Compose·Android 없음
+│   ├─ common/          time, KboTeams(순수 표), PollInterval — Compose·Android 없음
 │   ├─ navigation/      DsNavKeys(NavKey) — 순수 Kotlin + kotlinx.serialization
 │   ├─ designsystem/    Color, Type, Theme, TeamColors(teamColor·teamTint) — 도메인을 모른다
-│   └─ ui/              GameCard, LineScoreTable, StandingRow, States, PlayerParts, DsHelpers — 도메인은 알고 화면은 모른다
+│   └─ ui/              GameCard, LineScoreTable, StandingRow, States, PlayerParts, DsHelpers,
+│                       DsBottomBar, LivePolling, LocalPollInterval, Samples — 도메인은 알고 화면은 모른다
 ├─ data/
 │   ├─ remote/          WisetotoApi, dto/, mapper/, di/NetworkModule
 │   ├─ local/           entity/, dao/, mapper/, di/DatabaseModule, DiamondScoreDatabase
@@ -647,14 +655,16 @@ com.diamondscore
 
 규칙 2개만 지킨다:
 
-1. **`feature`·`core/ui`·`core/designsystem`은 `data`를 참조하지 않는다.** ViewModel이 주입받는 것은
-   Repository뿐이다 — `WisetotoApi`·DAO·`Entity`는 이름조차 나오지 않는다.
+1. **`feature`·`core/ui`·`core/designsystem`은 `data`의 내부(`WisetotoApi`·DAO·DTO·`Entity`)를
+   참조하지 않는다.** 이 층들이 `data`에서 받는 것은 Repository뿐이고, 그 너머로 넘어오는 타입은
+   `domain/model`뿐이다 — §5.5의 `:feature:* → :data:sports` 간선이 허용되는 것도 이 범위까지다.
 2. **DTO와 Room `Entity`는 `data` 밖으로 나가지 않는다.** 경계를 넘는 타입은 `domain/model`뿐이다.
 
 파생 규칙 두 개가 여기서 나온다 — `core/designsystem`은 `domain`을 모르고(그래서 도메인을 아는
 컴포넌트는 `core/ui`에 있다), `data`는 Compose를 모른다(그래서 한글 팀명 표는 `core/common`에,
 팀 컬러는 `core/designsystem`에 나뉘어 있다). 화면끼리는 서로를 모르고, 이동은 `(Long) -> Unit`
-콜백으로 위에 올려 `DiamondScoreApp.kt`가 `NavKey`로 바꾼다.
+콜백으로 위에 올려 `DiamondScoreApp.kt`가 `NavKey`로 바꾼다. 인자가 둘 이상인 화면(선수 상세 —
+선수 id + 팀 id)만 예외로 `NavKey`를 그대로 콜백에 올린다.
 
 이 넷을 지키면 이후 모듈 분리(§5.5)는 기계적 작업이다.
 
@@ -684,7 +694,7 @@ OkHttpClient.Builder()
     .build()
 ```
 
-Coil 3는 이 OkHttp 인스턴스를 공유한다(`coil-network-okhttp`). 응답에 `ETag`/`Cache-Control`이 없으므로(§2.1)
+Coil 3는 `coil-network-okhttp`로 OkHttp 네트워크 스택을 쓴다(위 인스턴스를 그대로 주입하는 배선은 **랩 미구현 — P1**). 응답에 `ETag`/`Cache-Control`이 없으므로(§2.1)
 조건부 요청은 불가능하다. 대신 목록 응답이 5 KB 안팎이라 20초 폴링 부담이 작고, 서버 캐시(`cache_second: 2`)가
 원본 부하를 막는다. 응답 `Content-Type`은 `text/html`이지만 kotlinx 컨버터는 헤더를 보지 않는다.
 
@@ -710,7 +720,7 @@ Coil 3는 이 OkHttp 인스턴스를 공유한다(`coil-network-okhttp`). 응답
 | Build | **AGP 9.4.0, Gradle 9.7.1**, JDK 17 | AGP 9.4는 Gradle 9.6.0 이상 필수 |
 | SDK | `compileSdk`/`targetSdk` 36, `minSdk` 26 | Play 신규 앱 요건(2026-08-31 발효)이 API 36. AGP 9.4는 37까지 지원하나 36으로 고정 |
 | Language | **Kotlin 2.4.10** | AGP built-in Kotlin(2.2.10)을 루트 `buildscript`에서 승격 |
-| UI | Compose BOM **2026.08.00** + Material 3 | ui 1.12.0 / material3 1.4.0을 BOM이 관리 |
+| UI | Compose BOM **2026.08.00** + Material 3 | ui 1.12.0 / material3 1.4.0을 BOM이 관리. `ui-text-google-fonts`(Bebas Neue 동적 로딩)와 `material-icons-extended`(BOM이 1.7.8로 동결, 이후 업데이트 없음)도 BOM이 버전을 준다 |
 | Compose 컴파일러 | `org.jetbrains.kotlin.plugin.compose` | Kotlin 동봉, 별도 버전 pin 없음 |
 | Navigation | **Navigation 3 `1.1.7`** | `navigation3-runtime` + `navigation3-ui`. Nav2(`navigation-compose`)는 쓰지 않는다 |
 | Nav3 보조 | `lifecycle-viewmodel-navigation3` 2.11.0, `adaptive-navigation3` **1.3.0** | 각각 ViewModel 스코핑, 목록-상세 2-pane |
@@ -719,10 +729,10 @@ Coil 3는 이 OkHttp 인스턴스를 공유한다(`coil-network-okhttp`). 응답
 | Local | Room **2.8.4**(KSP2), DataStore Preferences 1.2.1 | |
 | Background | WorkManager **2.11.2** | |
 | Network | Retrofit **3.0.0** + OkHttp **5.5.0** + kotlinx.serialization **1.11.0** | 컨버터는 공식 `com.squareup.retrofit2:converter-kotlinx-serialization`(패키지 `retrofit2.converter.kotlinx.serialization`) |
-| Images | Coil **3.6.1** (`coil-compose` + `coil-network-okhttp`) | OkHttp 인스턴스 공유 |
+| Images | Coil **3.6.1** (`coil-compose` + `coil-network-okhttp`) | OkHttp 네트워크 스택 사용(인스턴스 공유 배선은 랩 미구현 — P1) |
 | Lifecycle | **2.11.0** | `lifecycle-runtime-compose`(`collectAsStateWithLifecycle`) |
 | 기타 AndroidX | core-ktx **1.19.0**, activity-compose **1.13.0** | |
-| Quality | JUnit 4.13.2, kotlinx-coroutines-test 1.11.0, Turbine 1.2.1, MockWebServer 5.5.0, Compose UI Test(BOM), room-testing, hilt-android-testing | |
+| Quality | JUnit 4.13.2, `kotlin-test`, kotlinx-coroutines-test 1.11.0, Turbine 1.2.1, MockWebServer 5.5.0, Compose UI Test(BOM), room-testing, hilt-android-testing | `kotlin-test`(`assertFailsWith`·`assertIs`)는 `kotlin` ref를 그대로 따른다 |
 
 동적 버전을 금지하고 version catalog에 고정한다(Codelabs Step 2가 전체 catalog). 서로 묶인 세 줄은
 **Gradle ≥ 9.6 / KSP 2.3.x / Hilt ≥ 2.60**이며, 하나만 어긋나도 sync 단계에서 깨진다.
@@ -743,22 +753,25 @@ Coil 3는 이 OkHttp 인스턴스를 공유한다(`coil-network-okhttp`). 응답
 :core:ui                   ← Compose + :domain. 도메인을 아는 공용 컴포넌트
 :core:network :core:database :core:testing
 :data:sports               ← remote + local + repository + sync. DTO·Entity가 여기서 끝난다
-:feature:games :feature:game-detail :feature:standings :feature:teams :feature:favorites :feature:settings
+:feature:games :feature:game-detail :feature:standings :feature:teams :feature:players :feature:favorites :feature:settings
 ```
 
 허용되는 의존 방향은 이것뿐이다:
 
 ```
-:app → :feature:* → (:core:ui → :domain), :core:designsystem, :core:navigation, :data:sports(인터페이스 아님, 구현 주입)
+:app → :feature:*, :core:designsystem(테마), :core:navigation(NavKey)
+:feature:* → :domain, :core:ui, :core:designsystem, :core:common, :core:navigation, :data:sports(인터페이스 아님, 구현 주입)
+:core:ui → :domain, :core:designsystem, :core:common
 :data:sports → :domain, :core:common, :core:network, :core:database
-:core:designsystem → (Compose만)          # :domain 금지
+:core:designsystem → :core:common (Compose)  # 팀 컬러가 KBO_TEAMS를 읽는다(§5.1). :domain 금지
 :core:common, :domain → (순수 Kotlin)      # Android·Compose 금지
 :core:navigation → nav3-runtime, serialization  # Compose 금지
 ```
 
 - `:domain`은 Android SDK·Compose·Retrofit·Room에 의존하지 않는 순수 Kotlin 모듈(클린 아키텍처의 안정 핵).
 - `:feature:*`는 서로를 참조하지 않는다. 화면 간 이동은 `(Long) -> Unit` 콜백으로 `:app`이 받아
-  `NavKey`로 바꾼다.
+  `NavKey`로 바꾼다. 인자가 둘 이상인 화면만 예외로 `NavKey`를 그대로 올린다
+  (`TeamRosterScreen(onPlayer: (PlayerDetailKey) -> Unit)` — 선수 상세는 팀 id를 함께 받아야 한다).
 - 모델은 `:domain`에만 둔다(`:core:model`을 따로 만들지 않는다 — 모델 소유 모듈이 둘이면 승격이 막힌다).
 
 적응형 UI — Nav3에서는 back stack 하나에 `SceneStrategy`만 얹는다:
@@ -776,11 +789,11 @@ Room을 읽기 SSOT로 쓴다. ViewModel은 항상 DAO의 `Flow`만 구독한다
 
 | Entity | PK | 인덱스 | 비고 |
 |---|---|---|---|
-| `GameEntity` | `gameId` (= `schedule_info_seq`) | `leagueDate`, `homeTeamId`, `awayTeamId` | 시즌 전체 ~720행 + 선발투수 |
+| `GameEntity` | `gameId` (= `schedule_info_seq`) | `leagueDate`, `homeTeamId`, `awayTeamId` | 시즌 전체 782행(2026 실측, §3.2) + 선발투수 |
 | `InningRunEntity` | `(gameId, inning)` | `gameId` | home/away nullable, 상세 조회 시에만 채워짐 |
 | `StandingEntity` | `(season, teamId)` | — | `season`은 연도(Int), `draws` 직접 저장, `streak` |
 | `FavoriteEntity` | `(type, targetId)` | — | |
-| `SyncMetaEntity` | `resourceKey` | — | `lastSuccessAt`, `lastError` |
+| `SyncMetaEntity` | `resourceKey` | — | `lastSuccessAt`, `lastError` — **현재 랩 범위 밖(P1)** |
 
 팀 정보(`TeamEntity`)는 두지 않는다 — 10개 구단 표는 `core/common`의 상수이고, 구장·감독은 팀 상세에서 `Team_Info`를 그때 받는다(서버 캐시 1시간). 시즌 테이블도 없다(연도가 곧 시즌).
 
@@ -792,6 +805,9 @@ Room을 읽기 SSOT로 쓴다. ViewModel은 항상 DAO의 `Flow`만 구독한다
 - 프리페치는 upsert이므로 기존 행의 즐겨찾기·로컬 상태를 지우지 않는다.
 
 테마·설정은 DataStore.
+
+**현재 랩 범위 밖**: `SyncMetaEntity`와 순위 TTL 10분(§7.1)은 Codelabs가 구현하지 않는다. freshness(마지막 성공 시각·마지막 오류)는
+프로세스 메모리로만 유지하고 — 프로세스가 죽으면 사라진다 — 영속화와 TTL 기반 조건부 조회는 P1이다.
 
 > **엔티티 정정**: `PlayerEntity`·`PlayEntity`(선수·문자중계)는 데이터가 있어도 **P1 화면을 만들 때** 만든다.
 > 문자중계는 약 90일만 서버에 남으므로 보관하려면 그때 앱이 저장해야 한다. 점수는 스칼라가 아니라
@@ -821,7 +837,7 @@ Room을 읽기 SSOT로 쓴다. ViewModel은 항상 DAO의 `Flow`만 구독한다
 
 > 목록 응답에는 이닝별 득점이 없고(총점·이닝 코드만) 상세에만 `boxscore`가 있으므로 상세 폴링은 필수다.
 > 상세 응답의 `other_game_state`에 같은 날 다른 경기의 점수·이닝이 함께 오므로, 상세 화면을 보는 동안은
-> 목록 폴링을 멈추고 이 값으로 목록을 갱신할 수 있다 → `DS-002`에서 확인.
+> 목록 폴링을 멈추고 이 값으로 목록을 갱신할 수 있다 → `DS-053`에서 확인.
 
 ### 7.2 구현
 
@@ -840,6 +856,10 @@ class LivePoller<T>(
 - **backoff**: 실패 시 2배 증가(최대 2분), 성공 시 즉시 복구
 - **네트워크 콜백**: 끊기면 즉시 중단, 복구 시 즉시 1회 조회
 
+> Codelabs(Step 6)는 `repeatOnLifecycle(STARTED)` + 고정 20초 + jitter + single-flight(`refreshNow`의 `busy` 가드)만 있는
+> **축소판**을 쓴다. `LivePoller` 클래스와 적응형 간격·backoff·네트워크 콜백은 P1이다. 고정 20초는 공식 앱(4초)보다 느려 차단 위험은 없고,
+> 장시간 장애 시 무의미한 재시도가 이어지는 것만 남는 공백이다.
+
 ### 7.3 종료 처리
 
 `LIVE → FINAL`(`state: e`) 전환을 감지하면 폴링 중단 **전에** `live/schedule/{seq}`를 1회 더 호출해 최종 점수·RHEB를
@@ -854,21 +874,24 @@ class LivePoller<T>(
 ## 8. 단계별 구현 계획
 
 각 단계는 "구현 → 자동 테스트 → 실기기 확인"으로 끝낸다. 1인 기준 소요를 병기한다.
+단계 번호는 Codelabs 랩 번호와 같다(랩 `Step 0` 개발 환경 준비는 코드 작업이 아니라 여기 항목이 없다).
 
 ### Step 1 — 실기기 접근성 + 라이브 스키마 스파이크 (0.5일, **최우선**)
 
 §2.4의 미검증 항목을 닫는다. **여기서 막히면 이후 전부 무의미하므로 코드 작성 전에 한다.**
 
 - [ ] `DS-001` **실기기/에뮬레이터에서 앱의 OkHttp로 `live/Schedule_Day/{오늘}`이 봉투 `code:"00"`으로 오는지 확인.** 모바일 네트워크와 Wi-Fi 양쪽. HTTP 200은 판정 기준이 아니다(§3.4-1). `01`이면 공통 쿼리 인터셉터부터 본다
+- `DS-002` **라이브 스키마 관측** — 아래 `DS-002a`(시작)·`DS-002b`(종료)로 나뉜다. 다른 절의 `DS-002` 참조는 이 둘을 함께 가리키며, 두 관측 모두 2026-09-15에 끝났다
 - [x] `DS-002a` **라이브 시작 관측 (2026-09-15 18:31)** — 진행 중 `state = i`, 목록 행에 볼카운트·주자·현재 투수/타자 포함, `boxscore` 현재 하프이닝 `0`, `game_result`가 이닝 라벨(§2.4·§3.4-4)
 - [x] `DS-002b` **라이브 종료 관측 (2026-09-15 21:24~21:32)** — `i → e`와 최종 점수·RHEB는 동시, `end_summary`·목록 `detail.win_pitcher`는 **7~8분 뒤** 채워짐(§2.4·§7.3). 연장 경기의 라이브 표현은 미관측(추가 경기일에 확인)
 - [ ] `DS-003` `/extra/notice` 부트스트랩 응답의 `update.next_action`·`server.next_action` 처리 — 강제 업데이트/차단 신호를 앱 시작 시 확인
-- [ ] `DS-004` 프리페치 확인 — `Schedule_Month` 3~11월 890행 중 KBO 필터(§3.4-8) 통과 782행이 시즌 경기 수(정규 720 + 취소 70)에 맞는지, WBC·시범경기·올스타전이 걸러지는지
+- [ ] `DS-004` 프리페치 확인 — `Schedule_Month` 3~11월 890행 중 KBO 필터(§3.4-8) 통과 행 수가 실측치(2026-09-20 기준 782행 = 종료 653 + 취소 70 + 예정 59)와 맞는지, WBC·시범경기·올스타전이 걸러지는지
 - [x] `DS-006` **팀·선수 스키마 실측 (2026-09-18)** — `Team_Info`의 `player_position` 필수(0=투수/그 외=타자), 목록에 포지션 없음,
   등번호 중복(두산 48번 2명), `team_history` 구분자 소문자 `l`, `Player_Info`의 `c_position` 기반 스키마 분기,
   `month:"13"`=시즌 합계(월 합과 불일치), 이닝 표기 2종, `previous5`의 누적 ERA·전 필드 null 행(§3.4-9~12)
-- [ ] `DS-005` fixture 저장 → `app/src/test/resources/fixtures/` (예정/라이브/종료/연장 11회/취소·노게임 각 1건 이상 +
-  `team_info_pitchers`·`team_info_batters`·`player_batter`·`player_pitcher` 4건, 총 12건)
+- [ ] `DS-005` fixture 저장 → `app/src/test/resources/fixtures/` (예정/종료/연장 11회/취소·노게임 각 1건 이상 +
+  `team_info_pitchers`·`team_info_batters`·`player_batter`·`player_pitcher` 4건, **총 12건**. 라이브
+  `schedule_day_live.json`은 경기 시간에만 받을 수 있는 **13번째** 파일이라 따로 센다 — Step 1 체크포인트와 같은 세는 법)
 
 **산출물**: fixture 세트(Step 1) + `DS-002`·`DS-006` 관측 기록.
 **완료 조건**: §3.4의 함정 12개 + `DS-002` 신규 발견 항목이 전부 fixture로 고정됨.
@@ -897,32 +920,41 @@ class LivePoller<T>(
 - [ ] `DS-030` Entity/DAO/Database, schema export
 - [ ] `DS-031` **시즌 프리페치 워커**(§3.2) — `Schedule_Month` 3~11월, 하루 1회 현재·다음 달 재조회
 - [ ] `DS-032` `GamesRepository` — `observeByDate(LocalDate)`는 Room, `refreshDay`/`refreshGame`은 네트워크→트랜잭션 upsert
-- [ ] `DS-033` 행 동등 비교 기반 쓰기 스킵(§6), single-flight, `DataFreshness`
+- [ ] `DS-033` 행 동등 비교 기반 쓰기 스킵(§6), `DataFreshness`. single-flight는 ViewModel의 `busy` 가드로 하고 Repository `Mutex`는 P1(§7.2)
 - [ ] `DS-034` 통합 테스트: 캐시 히트, 오프라인, 프리페치 중단·재개, 롤백
 
 **완료 조건**: 비행기 모드에서 시즌 전체 일정을 날짜 이동으로 탐색할 수 있다.
 
-### Step 5 — 경기 목록 (1.5일)
+### Step 5 — 공통 컴포넌트 (별도 일수 없음 — Step 6·7 화면 작업 몫을 앞으로 당긴다)
+
+화면 코드를 쓰기 전에 `core/ui`·`core/designsystem`의 공용 조각을 먼저 만든다 — `DsBottomBar`,
+`GameCard`(라이브 히어로 / 라인 로우), `LineScoreTable`, `StandingRow`, 상태 컴포넌트(로딩·빈 날짜·오류·오프라인),
+선수 아바타·기록 표, Preview 샘플. 새 추적 항목은 두지 않고 각 컴포넌트는 이를 쓰는 화면 항목
+(`DS-042`·`DS-051`·`DS-060`·`DS-064`)에서 함께 확인한다.
+
+**완료 조건**: 샘플 데이터 Preview가 다크·라이트 양쪽에서 전부 렌더링된다.
+
+### Step 6 — 경기 목록 (1.5일)
 
 - [ ] `DS-040` `GamesViewModel` + `GamesUiState`(날짜, 섹션, freshness, error)
 - [ ] `DS-041` 날짜 네비게이션 + `SavedStateHandle` 보존(읽기만 하지 말고 쓸 것), "오늘" 버튼
 - [ ] `DS-042` 경기 카드 4종 상태, **원정팀 먼저 표시**(KBO 관행)
-- [ ] `DS-043` `LivePoller` + `Schedule_Day/{오늘}` 연동(§7.1)
+- [ ] `DS-043` 라이브 폴링 축소판 — `repeatOnLifecycle` + 고정 20초 + jitter로 `Schedule_Day/{오늘}` 갱신(§7.1). 적응형·backoff까지 갖춘 `LivePoller`는 P1(§7.2)
 - [ ] `DS-044` loading / empty / error / stale UI
 
 **완료 조건**: 경기일에 30분 켜두고 점수가 자동 갱신되며, 홈 → 복귀 시 폴링이 정확히 멈췄다 재개된다.
 
-### Step 6 — 경기 상세 (1.5일)
+### Step 7 — 경기 상세 (1.5일)
 
 - [ ] `DS-050` 스코어 헤더 + 상태 라벨(원문 표시)
 - [ ] `DS-051` **라인스코어 테이블** — 동적 이닝, 연장 가로 스크롤, 미진행 이닝 구분
 - [ ] `DS-052` 구장·안타·실책·승/패/세이브 투수 정보 섹션 (공급되는 것만)
 - [ ] `DS-053` 상세 폴링 + `FINAL` 확정 조회(§7.3)
-- [ ] `DS-054` 볼카운트·주자·라인업·문자중계 영역을 **만들지 않음**을 코드 리뷰에서 확인(§1.2, `DS-002` 이후 P1)
+- [ ] `DS-054` 볼카운트·주자·라인업·문자중계 영역을 **만들지 않음**을 코드 리뷰에서 확인(§1.2, P1)
 
 **완료 조건**: 9이닝 / 연장 / 취소 / 미진행 fixture 골든 시나리오 통과.
 
-### Step 7 — 순위·팀·선수·즐겨찾기 (2일)
+### Step 8 — 순위·팀·선수·즐겨찾기 (2일)
 
 - [ ] `DS-060` 순위 화면 — 승-패-무, 승률, 게임차, 연속(`straight`); 5위 뒤 진출선은 UI 고정
 - [ ] `DS-061` 팀 상세 — 구장·감독·연혁(`Team_Info` 2회), 최근/예정 경기는 Room(`observeByTeam`), 선수단 진입점
@@ -932,7 +964,7 @@ class LivePoller<T>(
 
 **완료 조건**: 두산(네이비)과 KIA(레드)를 번갈아 열어 팀 색만 바뀌고 앱 액센트는 유지되며, 라이트 테마에서도 전부 읽힌다.
 
-### Step 8 — 마감 (1.5일)
+### Step 9 — 마감 (1.5일)
 
 - [ ] `DS-070` 설정: 테마, 폴링 간격, **데이터 출처 표기(wisetoto · 프로야구 LIVE)**
 - [ ] `DS-071` Nav3 연결 — 탭별 back stack 4개, `entryProvider`, decorator 2개(saveable + viewModelStore)
@@ -941,14 +973,14 @@ class LivePoller<T>(
 - [ ] `DS-074` Baseline Profile, 30분 라이브 배터리·메모리 측정
 - [ ] `DS-075` R8 릴리스 빌드 검증
 
-**총 예상: 11~12일** (1인). 단 `DS-002`와 Step 5·6 검증이 실제 경기일에 묶이므로 캘린더 기준 2~3주.
-팀·선수 화면(Step 7)은 경기일과 무관하게 검증되므로 라이브 검증을 기다리는 동안 끼워 넣을 수 있다.
+**총 예상: 11~12일** (1인). 단 Step 6·7 검증이 실제 경기일에 묶이므로 캘린더 기준 2~3주.
+팀·선수 화면(Step 8)은 경기일과 무관하게 검증되므로 라이브 검증을 기다리는 동안 끼워 넣을 수 있다.
 
 ### 착수 순서 — 지금 시작할 3가지
 
 1. **`DS-001`** — 실기기에서 wisetoto API 호출이 `code 00`으로 오는지 확인. 이 계획 전체의 전제다. **가장 먼저, 코드 작성 전에.**
 2. **`DS-010`** — Compose 프로젝트 생성. 라이브 스키마는 시작·종료 모두 09-15에 확보했다(§2.4).
-3. **`DS-010`** — Compose 프로젝트 생성. `DS-002`를 기다리는 동안 병행.
+3. **`DS-020`** — 네트워크·매핑 계층 착수. fixture(`DS-005`)만 있으면 경기일과 무관하게 병행된다.
 
 ---
 
@@ -958,10 +990,10 @@ class LivePoller<T>(
 
 | 층 | 대상 | 도구 |
 |---|---|---|
-| 단위 | 매퍼(§3.4 함정 12종), 상태 매핑, 이닝 코드·15칸 라인스코어 파싱, 문자열 수치, KBO 필터, 선수단 정렬·중복 등번호, `c_position` 스키마 분기, 이닝 표기 2종, `LivePoller` 간격 | JUnit, coroutines-test, Turbine |
-| 통합 | 월 프리페치 순회, Repository 캐시/오프라인/트랜잭션/쓰기 스킵, `code 01` 봉투 처리, Room 마이그레이션 | MockWebServer, Room testing |
-| UI | 화면별 loading/content/empty/error, 라인스코어 연장 렌더링, 원정-홈 표시 순서, 선수단 중복 등번호에서 `key` 충돌 없음, 타자/투수 표 분기 | Compose UI Test |
-| 시각 | compact/medium/expanded × light/dark × 글꼴 1.0/2.0 | screenshot test |
+| 단위 | 매퍼(§3.4 함정 12종), 상태 매핑, 이닝 코드·15칸 라인스코어 파싱, 문자열 수치, KBO 필터, 선수단 정렬·중복 등번호, `c_position` 스키마 분기, 이닝 표기 2종, 폴링 간격(`LivePoller`는 P1) | JUnit, coroutines-test, Turbine |
+| 통합 | 월 프리페치 순회, Repository 캐시/오프라인/트랜잭션/쓰기 스킵, `code 01` 봉투 처리, Room 마이그레이션(Codelabs 미구현 — P1, DB가 version 1) | MockWebServer, Room testing |
+| UI | 화면별 loading/content/empty/error, 라인스코어 연장 렌더링, 원정-홈 표시 순서, 선수단 중복 등번호에서 `key` 충돌 없음, 타자/투수 표 분기 (Codelabs 미구현 — P1, 랩은 Step 9의 설정 화면 테스트 1건만 만든다) | Compose UI Test |
+| 시각 | compact/medium/expanded × light/dark × 글꼴 1.0/2.0 (Codelabs 미구현 — P1) | screenshot test |
 | 경계 | 위 4개 규칙을 import 기준으로 검사 | 승격 후에는 모듈 의존 그래프가 대신 강제한다 |
 | 수동 | 경기일 라이브 검증 | 실기기 |
 
@@ -981,7 +1013,7 @@ class LivePoller<T>(
 | 리스크 | 확률 | 영향 | 대응 |
 |---|---|---|---|
 | **앱 버전 게이팅·인증 도입** | 중 | 치명 | `/extra/notice`의 `next_action`을 시작 시 확인(`DS-003`). `code 01`이 연속되면 retry 없이 circuit open + 기능 flag off(§13 B). 우회하지 않는다 |
-| **진행 중 `state` 값이 폴백과 다름** | 중 | 큼 | 점수 유무 폴백(§4.1)으로 LIVE 판정, 이닝 라벨은 코드 파싱 실패 시 "진행 중". `DS-002`로 사전 확인 |
+| **진행 중 `state` 값이 폴백과 다름** | 중 | 큼 | 점수 유무 폴백(§4.1)으로 LIVE 판정, 이닝 라벨은 코드 파싱 실패 시 "진행 중". `DS-002a`로 확인 완료(`i`) |
 | 목록에 이닝별 득점 없음 | 확정 | 중 | 상세 폴링 유지(§7.1), `other_game_state`로 보완 검토 |
 | 라이브 갱신 지연 | 중 | 중 | 응답 동등 비교 기반 신선도 표시, "마지막 갱신" 명시 |
 | 스키마 변경·필드명 오타 정정 | 중 | 중 | `ignoreUnknownKeys`, 전 필드 nullable, `@SerialName` 한곳, 필드 단위 폐기 |
@@ -1032,7 +1064,7 @@ class LivePoller<T>(
 | 한국어 팀명 | 없음 | 약칭 제공 |
 | 날짜 조회 | 없음(시즌 페이지 순회) | `Schedule_Day/{yyyyMMdd}` |
 
-SofaScore 시절 확정한 사실 중 남길 것: 무승부 `winnerCode = 3`(`DS-002` 구 항목 해소), 라이브 스키마는 두 소스
+SofaScore 시절 확정한 사실 중 남길 것: 무승부 `winnerCode = 3`(구 `DS-002` 항목 해소 — 현행 `DS-002a/b`와 무관), 라이브 스키마는 두 소스
 모두 미관측이었다는 점. 이전 `DS-120`·`DS-121`·`DS-125`(SofaScore APK 경로 검증)는 폐기한다.
 
 **wisetoto 접근 메모**: 경로 대소문자 구분, 필수 쿼리, Python 기본 UA 401, 앱 부트스트랩 `/extra/notice`의

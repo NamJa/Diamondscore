@@ -24,8 +24,8 @@ fun StandingsScreen(onTeam: (Long) -> Unit) {
     val vm: StandingsViewModel = hiltViewModel()
     val rows by vm.ui.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        TopBar("순위", trailing = { SeasonChip("2026 정규시즌") })
-        StandingsHeader()   // # 팀 승·패·무 승률 GB
+        TopBar("순위", trailing = { Caption("2026 정규시즌") })   // 라벨 — 누르는 곳이 아니다
+        StandingsHeader()   // # 팀 승·패·무 승률 GB 연속
         LazyColumn {
             rows.forEachIndexed { i, s ->
                 item(key = s.team.id) { StandingRow(s) { onTeam(s.team.id) } }
@@ -36,11 +36,15 @@ fun StandingsScreen(onTeam: (Long) -> Unit) {
 }
 ```
 
+시즌 표시는 칩이 아니라 `Caption` 라벨입니다 — **현재 시즌 고정**이고 과거 시즌 전환은 P1이라,
+계획서 §1.6("P1 항목의 UI 자리를 만들지 않는다")대로 누를 곳을 만들지 않습니다.
+Step 5 §6의 `SeasonChip`(`ExpandMore` 아이콘이 달린 클릭 칩)은 그 기능이 들어올 때 씁니다.
+
 <div class="callout tip"><span class="t">진출선은 LazyColumn DSL로</span>
 <code>item {}</code>은 <code>LazyListScope</code>에서만 호출됩니다 — <code>itemsIndexed</code>의 항목 람다 <strong>안에서는</strong> 쓸 수 없습니다. 위처럼 <code>rows.forEachIndexed</code>로 각 행을 <code>item</code>으로 내보내고, 5위 다음에 별도 <code>item</code>으로 <code>PlayoffDivider</code>를 끼웁니다. 공급 안 되는 컬럼은 <code>-</code>가 아니라 컬럼 자체를 숨기고, 동률은 <code>position</code>을 그대로 씁니다(무승부는 <code>draw_count</code>로 직접 옵니다).
 </div>
 
-**Repository · 매퍼 · ViewModel · 헤더** (완전한 코드)
+**Repository · 매퍼 · ViewModel · 헤더** (생략 없는 구현 — package·import는 아래 각 파일 경로에 맞춰 채웁니다)
 
 `data/repository/StandingsRepository.kt` + `data/local/mapper/StandingMappers.kt`:
 
@@ -54,7 +58,7 @@ class StandingsRepository @Inject constructor(
     fun currentSeasonYear(): Int = LocalDate.now(SEOUL).year
 
     suspend fun refresh(year: Int) {
-        val rows = api.leagueRank(year).body().rank                  // 서버 캐시 1시간, 앱 TTL 10분
+        val rows = api.leagueRank(year).body().rank                  // 서버 캐시 1시간 (앱 TTL 10분은 계획서 §7.1 — 랩 범위 밖)
         dao.replace(year, rows.map { it.toDomain().toEntity(year) })
     }
 }
@@ -97,6 +101,7 @@ fun StandingsHeader() = Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, 
     Text("승·패·무", Modifier.width(78.dp), style = st, color = c, textAlign = TextAlign.Center)
     Text("승률", Modifier.width(46.dp), style = st, color = c, textAlign = TextAlign.End)
     Text("GB", Modifier.width(40.dp), style = st, color = c, textAlign = TextAlign.End)
+    Text("연속", Modifier.width(34.dp), style = st, color = c, textAlign = TextAlign.End)
 }
 ```
 
@@ -248,7 +253,7 @@ fun teamRecord(s: Standing): String = buildString {
 class TeamDetailViewModel @AssistedInject constructor(
     private val repo: TeamsRepository,
     private val standings: StandingsRepository,
-    private val favorites: FavoritesRepository,
+    private val favorites: FavoritesRepository,     // ← §6에서 만듭니다 (먼저 §6의 8줄만 붙여넣어도 됩니다)
     @Assisted private val key: TeamDetailKey,       // ← Nav3 인자 (Step 2 core/navigation)
 ) : ViewModel() {
     val ui: StateFlow<TeamDetailUi?> = combine(
@@ -326,6 +331,9 @@ class TeamRosterViewModel @AssistedInject constructor(
     interface Factory { fun create(key: TeamRosterKey): TeamRosterViewModel }
 }
 
+// 이동 콜백이 (Long) -> Unit이 아닌 유일한 화면이다 — 선수 화면만 인자가 둘(선수·팀)이라
+// 이미 있는 PlayerDetailKey를 그대로 넘긴다. 나머지 화면은 규칙대로 id 하나만 올리고,
+// 어떤 키로 바꿀지는 :app이 정한다(Step 9).
 @Composable
 fun TeamRosterScreen(key: TeamRosterKey, onPlayer: (PlayerDetailKey) -> Unit, onBack: () -> Unit) {
     val vm = hiltViewModel<TeamRosterViewModel, TeamRosterViewModel.Factory>(
@@ -365,7 +373,7 @@ fun TeamRosterScreen(key: TeamRosterKey, onPlayer: (PlayerDetailKey) -> Unit, on
 }
 ```
 
-**헤더·행·탭·연혁 조각** (완전한 코드)
+**헤더·행·탭·연혁 조각** (생략 없는 구현 — 같은 파일에 이어 붙입니다)
 
 ```kotlin
 /** 팀 상세의 `TeamHeader`보다 얕은 헤더 — 전적·즐겨찾기는 팀 상세에만 둔다. */
@@ -699,14 +707,14 @@ fun FavoritesScreen(onTeam: (Long) -> Unit, onSettings: () -> Unit) {
     val vm: FavoritesViewModel = hiltViewModel()
     val teams by vm.teams.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 설정 진입점은 여기 하나뿐입니다 (Step 9에서 SettingsKey로 연결)
+        // 설정 진입점은 경기 목록과 즐겨찾기 두 곳입니다 (Step 9에서 SettingsKey로 연결)
         TopBar("즐겨찾기", trailing = {
             IconButton(onClick = onSettings) { DsIcon(Icons.Outlined.Settings, size = 22.dp) }
         })
         if (teams.isEmpty()) CenterColumn {
             DsIcon(Icons.Outlined.StarBorder, size = 52.dp, tint = DsColors.muted2)
             Text("즐겨찾는 구단이 없어요", style = MaterialTheme.typography.bodyLarge)
-            Caption("팀 상세에서 별을 눌러 추가하면 여기와 경기 목록 상단에 고정됩니다.")
+            Caption("팀 상세에서 별을 눌러 추가하면 여기에 모입니다. 로그인 없이 이 기기에만 저장돼요.")
         } else LazyColumn(
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { SectionLabel("내 구단") }
@@ -731,24 +739,44 @@ private fun FavoriteTeamCard(team: TeamRef, onClick: () -> Unit) = Surface(
 }
 ```
 
+<div class="callout warn"><span class="t">목업과 다른 점 — 경기 단위 즐겨찾기는 P1</span>
+목업(Favorites)에는 <strong>내 구단</strong> 아래에 <strong>즐겨찾는 경기</strong> 섹션(롯데 · 삼성 한 행)이 있고 경기 상세 헤더에도 별 아이콘이 있지만, 계획서 §1.2는 즐겨찾기를 <strong>팀 단위로만</strong> 정의합니다 — 경기 단위 즐겨찾기는 P1이라 이 랩에서는 만들지 않습니다.
+그래서 <strong>Step 7의 경기 상세 상단바에도 별을 두지 않았습니다</strong> — 눌러도 아무 일이 없는 별은 죽은 어포던스이고, 별은 팀 상세(§2)에만 있습니다.
+</div>
+
 <div class="callout tip"><span class="t">로컬 저장 · 목록 고정</span>
 로그인 없이 Room에만 저장합니다. 즐겨찾은 구단을 경기 목록 상단에 고정하려면 <code>GamesRepository.observeByDate</code>를 <code>favorites.observeTeams()</code>와 <code>combine</code>해 정렬 키를 얹습니다(Step 6-5).
 </div>
 
 ## 7. 실행 확인
 
-<div class="checkpoint"><span class="t"></span> 아래가 전부 되면 완료입니다.
+내비게이션은 아직 없습니다 — <code>NavDisplay</code> 배선은 Step 9 §1에서 처음 생깁니다.
+그때까지는 Step 6 §6처럼 `MainActivity`의 `setContent`에 화면 하나를 임시로 끼워 바꿔 가며 확인합니다.
+콜백은 `{}`로 비우고, 키는 손으로 넣습니다(두산 316, KIA 320).
+
+```kotlin
+// setContent { DiamondScoreTheme { ... } } 안에서 한 줄씩 바꿔 끼운다
+StandingsScreen(onTeam = {})
+TeamDetailScreen(TeamDetailKey(316), onGame = {}, onRoster = {}, onBack = {})
+TeamRosterScreen(TeamRosterKey(316), onPlayer = {}, onBack = {})
+// playerId는 위 선수단 화면의 onPlayer에서 로그로 찍어 확인한 값을 넣는다
+PlayerDetailScreen(PlayerDetailKey(playerId = 0L, teamId = 316), onBack = {})
+FavoritesScreen(onTeam = {}, onSettings = {})
+```
+
+<div class="checkpoint"><span class="t"></span> 화면을 하나씩 끼워 아래가 전부 보이면 완료입니다.
 <ul>
-<li>순위(진출선 포함) → 팀 선택 → 컬러 헤더의 팀 상세 → 최근 경기 → 경기 상세</li>
-<li>팀 상세의 <strong>선수단 투수 nn · 타자 nn ›</strong> → 선수단 화면에서 투수/타자 탭 전환, 육성선수 구분선</li>
-<li>선수단에서 선수 탭 → <strong>타자는 타율·홈런·타점 표, 투수는 ERA·승·이닝·삼진 표</strong>가 뜨고 섞이지 않음</li>
+<li><code>StandingsScreen</code>: 10개 구단 + 5위 뒤 진출선, 헤더와 행의 6열(# · 팀 · 승·패·무 · 승률 · GB · 연속)이 어긋나지 않음</li>
+<li><code>TeamDetailScreen</code>: 컬러 헤더·구단 정보·<strong>선수단 투수 nn · 타자 nn ›</strong>·최근/다음 경기가 뜸</li>
+<li><code>TeamRosterScreen</code>: 투수/타자 탭 전환, 육성선수 구분선</li>
+<li><code>PlayerDetailScreen</code>: <strong>타자는 타율·홈런·타점 표, 투수는 ERA·승·이닝·삼진 표</strong>가 뜨고 섞이지 않음</li>
 <li>월별 표의 마지막 행이 <code>13</code>이 아니라 <strong>합계</strong>로 강조돼 있음</li>
 <li>기록이 없는 경기 행이 <code>0</code>이 아니라 <code>—</code>로 보임 (곽빈 8/22)</li>
-<li>별을 누르면 즐겨찾기에 추가되어 목록 상단에 고정</li>
-<li><strong>두산(네이비)과 KIA(레드)를 번갈아 열어</strong> 팀 색만 바뀌고 탭바·링크는 레드로 유지되는지</li>
+<li>팀 상세에서 별을 누르면 채워진 별로 바뀌고, <code>FavoritesScreen</code>으로 바꿔 끼우면 <strong>내 구단</strong>에 그 팀이 있음 (다시 누르면 빠짐)</li>
+<li>키를 <strong>두산(316, 네이비)과 KIA(320, 레드)로 바꿔 끼워</strong> 팀 색만 바뀌고 링크·대표 기록은 레드로 유지되는지</li>
 <li>라이트 테마에서도 위가 전부 읽히는지 (팀 틴트가 뒤집히는 게 정상입니다)</li>
 </ul>
-목업의 순위·팀 상세·팀 정보·선수 정보와 대조하세요.</div>
+목업의 순위·팀 상세·팀 정보·선수 정보와 대조하세요. 화면 <strong>사이의 이동과 뒤로 가기</strong>는 Step 9 §8의 완성 점검에서 확인합니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-7">← Step 7</a>

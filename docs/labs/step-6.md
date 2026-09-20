@@ -3,20 +3,21 @@
 <div class="chips"><span class="chip time">90분</span><span class="chip diff">보통</span><span class="chip goal">Step 5 컴포넌트를 조립해 날짜별 목록 + 라이브 갱신을 완성한다</span></div>
 
 첫 화면입니다. Step 5에서 만든 `GameCard`·`DsBottomBar`·상태 컴포넌트를 조립하고, 날짜 네비게이션과
-**요청 1개짜리 라이브 폴링**을 붙입니다. 목업의 홈 화면을 그대로 만듭니다.
+**요청 1개짜리 라이브 폴링**을 붙입니다. 목업의 홈 화면을 만듭니다.
 
 ## 1. UiState와 ViewModel
 
 `feature/games/GamesViewModel.kt` (신선도 enum은 `domain/model`에 두어도 됩니다):
 
 ```kotlin
-enum class Freshness { FRESH, STALE, OFFLINE }
+enum class Freshness { FRESH, OFFLINE }
 
 data class GamesUiState(
     val date: LocalDate = LocalDate.now(SEOUL),
     val games: List<GameSummary> = emptyList(),
     val loading: Boolean = true,
-    val freshness: Freshness = Freshness.FRESH,   // FRESH / STALE / OFFLINE
+    val freshness: Freshness = Freshness.FRESH,
+    val lastUpdatedText: String? = null,          // "마지막 갱신 10분 전"
     val error: Boolean = false,
 )
 
@@ -25,27 +26,68 @@ class GamesViewModel @Inject constructor(
     private val repo: GamesRepository,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
+    /** 갱신 시도의 결과. 이게 없으면 오프라인 배너도 오류 화면도 영원히 뜨지 않는다. */
+    private data class Sync(
+        val lastOk: Instant? = null,
+        val lastTry: Instant? = null,   // 실패가 이어져도 매번 값이 달라져야 "n분 전"이 다시 계산된다
+        val failed: Boolean = false,
+        val busy: Boolean = false,
+    )
+
     // 선택 날짜는 nav 인자가 아니라 화면 상태다 → SavedStateHandle로 프로세스 재생성까지만 보존
     private val date = MutableStateFlow(
         savedState.get<String>(KEY_DATE)?.let(LocalDate::parse) ?: LocalDate.now(SEOUL))
+    private val sync = MutableStateFlow(Sync())
 
-    val ui: StateFlow<GamesUiState> = date
-        .flatMapLatest { d -> repo.observeByDate(d).map { d to it } }
-        .map { (d, games) -> GamesUiState(date = d, games = games, loading = false) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GamesUiState())
+    val ui: StateFlow<GamesUiState> = combine(
+        date.flatMapLatest { d -> repo.observeByDate(d).map { d to it } },
+        sync,
+    ) { (d, games), s ->
+        GamesUiState(
+            date = d,
+            games = games,
+            loading = s.busy && games.isEmpty(),
+            freshness = if (s.failed) Freshness.OFFLINE else Freshness.FRESH,
+            lastUpdatedText = s.lastOk?.let(::agoText),
+            error = s.failed && games.isEmpty(),   // 캐시가 있으면 오류 화면 대신 배너 (목업 "오프라인(캐시)")
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), GamesUiState())
 
     fun move(days: Long) = setDate(date.value.plusDays(days))
     fun today() = setDate(LocalDate.now(SEOUL))
-    fun refreshDay() = viewModelScope.launch { runCatching { repo.refreshDay(date.value) } }   // 보고 있는 날짜 1회
+    fun refreshDay() = viewModelScope.launch { refreshNow() }        // 보고 있는 날짜 1회
+    fun goNearest() = viewModelScope.launch { repo.nearestGameDay(date.value)?.let(::setDate) }
+
+    /** 폴링 루프·재시도 버튼이 함께 쓰는 suspend 버전. 앞 요청이 안 끝났으면 건너뛴다(single-flight). */
+    suspend fun refreshNow() {
+        if (sync.value.busy) return
+        sync.update { it.copy(busy = true) }
+        val ok = runCatching { repo.refreshDay(date.value) }.isSuccess
+        val now = Instant.now()
+        sync.update { it.copy(busy = false, failed = !ok, lastTry = now, lastOk = if (ok) now else it.lastOk) }
+    }
 
     private fun setDate(d: LocalDate) {
         date.value = d
         savedState[KEY_DATE] = d.toString()      // 읽기만 하고 안 쓰면 보존이 안 된다
     }
 
+    private fun agoText(t: Instant): String =
+        Duration.between(t, Instant.now()).toMinutes().let {
+            if (it < 1) "마지막 갱신 방금 전" else "마지막 갱신 ${it}분 전"
+        }
+
     private companion object { const val KEY_DATE = "date" }
 }
 ```
+
+<div class="callout tip"><span class="t">"가장 가까운 경기일로" 한 줄 짜리 조회</span>
+<code>goNearest()</code>는 Step 4 §4의 <code>GamesRepository.nearestGameDay</code>를 그대로 호출합니다 — 쿼리(<code>GameDao.nearestAfter</code>)도 <code>FakeGameDao</code>의 override도 리포지터리의 한 줄도 Step 4에 이미 있으므로 여기서 추가할 것은 없습니다. 시즌 프리페치가 이미 3~11월 일정을 Room에 넣어 뒀으므로 네트워크도 필요 없습니다.
+</div>
+
+<div class="callout warn"><span class="t">상태를 안 쓰면 상태 화면도 안 뜬다</span>
+<code>runCatching { … }</code>로 예외를 <strong>삼키기만</strong> 하면 <code>freshness</code>·<code>error</code>는 영원히 기본값이고, Step 5에서 만든 <code>ErrorState</code>·<code>StaleBanner</code>는 앱에서 한 번도 렌더링되지 않습니다. 위처럼 실패를 <code>sync</code>에 적어 두는 것이 목업의 "오류"·"오프라인(캐시)" 두 화면을 살리는 유일한 배선입니다. 마지막 성공 시각은 프로세스가 죽으면 사라집니다 — 재시작 후에도 남기려면 계획서 §6의 <code>SyncMetaEntity(lastSuccessAt)</code>가 필요하고, 그건 이 튜토리얼 범위 밖입니다.
+</div>
 
 <div class="callout tip"><span class="t">Navigation 3에서 인자는 <code>SavedStateHandle</code>로 오지 않는다</span>
 경기 목록은 탭 루트라 인자가 없습니다. 하지만 인자가 있는 화면(Step 7·8)은 다릅니다 — Nav3는 <code>Bundle</code>이 아니라 <strong>타입 있는 키 객체</strong>를 넘기므로 <code>savedState["eventId"]</code> 같은 코드는 <code>null</code>을 받습니다. 인자는 <code>@AssistedInject</code>로 키를 직접 주입해서 받습니다(Step 7). <code>SavedStateHandle</code>은 위처럼 <strong>화면이 스스로 만든 상태</strong>를 프로세스 재생성까지 살리는 용도로만 남습니다.
@@ -53,7 +95,8 @@ class GamesViewModel @Inject constructor(
 
 ## 2. 날짜 바 (DateBar)
 
-목업 상단: `‹ 8월 2일 토 ›` + "오늘" 버튼.
+계획서 §1.3의 날짜 네비게이션(이전·다음·오늘)을 목업 상태 화면의 `‹ 9월 14일 월 ›` 형태로 만듭니다.
+홈 아트보드의 5일 스트립과는 다릅니다 — 정본은 계획서 §1.3이고, 스트립이나 날짜 선택기로 바꾸고 싶으면 이 컴포저블만 갈아 끼우면 됩니다.
 
 `feature/games/DateBar.kt`:
 
@@ -82,18 +125,30 @@ fun DateBar(date: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onToday: ()
 
 ```kotlin
 @Composable
-fun GamesScreen(onGame: (Long) -> Unit) {
+fun GamesScreen(
+    onGame: (Long) -> Unit,
+    onSettings: () -> Unit = {},        // Step 9 §1의 entry<GamesKey>에서 SettingsKey로 연결
+) {
     val vm: GamesViewModel = hiltViewModel()   // androidx.hilt.lifecycle.viewmodel.compose
     val ui by vm.ui.collectAsStateWithLifecycle()
+    // 오늘이면 진입 시 1회 — 프리페치된 일정 위에 최신 상태(취소·선발 변경)를 덮는다
+    LaunchedEffect(ui.date) { if (ui.date == LocalDate.now(SEOUL)) vm.refreshNow() }
+    LivePolling(                                        // §4 — Step 9에서 간격을 설정값으로 바꿔 끼운다
+        hasLive = ui.games.any { it.status == GameStatus.LIVE },
+        onTick = { vm.refreshNow() },
+    )
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        TopBar(title = "경기", subtitle = "KBO 2026")
+        TopBar("경기", trailing = {                      // 목업 헤더 우측: 설정 톱니
+            IconButton(onClick = onSettings) { DsIcon(Icons.Outlined.Settings, size = 22.dp) }
+        })
         DateBar(ui.date, onPrev = { vm.move(-1) }, onNext = { vm.move(1) }, onToday = vm::today)
-        if (ui.freshness == Freshness.OFFLINE) StaleBanner("마지막 갱신 10분 전")
+        // 껐다 켠 직후엔 성공 시각이 없다 → 그래도 캐시를 보고 있다는 사실은 알려준다
+        if (ui.freshness == Freshness.OFFLINE) StaleBanner(ui.lastUpdatedText ?: "캐시 표시 중")
 
         when {
             ui.loading            -> LoadingCards()
             ui.error              -> ErrorState(onRetry = vm::refreshDay)
-            ui.games.isEmpty()    -> EmptyDay(onNearest = { /* 가장 가까운 경기일 */ })
+            ui.games.isEmpty()    -> EmptyDay(onNearest = vm::goNearest)
             else -> LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
                 sectioned(ui.games).forEach { (title, items) ->
                     item { SectionLabel(title) }                       // 진행 중 / 예정 / 종료
@@ -106,7 +161,7 @@ fun GamesScreen(onGame: (Long) -> Unit) {
 ```
 
 <div class="callout tip"><span class="t">간격: 히어로 vs 라인 로우</span>
-리스트에 <code>spacedBy</code>를 주지 않습니다. <strong>라이브 히어로 카드</strong>는 자체 여백을, <strong>라인 로우</strong>는 자체 상단 헤어라인(§Step 5 <code>GameRow</code>)을 그리므로, 로우들은 카드 간격 없이 <strong>연속</strong>돼야 에디토리얼 느낌이 삽니다. 히어로에 상하 여백이 필요하면 <code>LiveHeroCard</code> 루트에 <code>Modifier.padding(vertical = 6.dp)</code>를 넣으세요.
+리스트에 <code>spacedBy</code>를 주지 않습니다. <strong>라이브 히어로 카드</strong>는 자체 여백을, <strong>라인 로우</strong>는 자체 상단 헤어라인(Step 5 §2 <code>GameRow</code>)을 그리므로, 로우들은 카드 간격 없이 <strong>연속</strong>돼야 에디토리얼 느낌이 삽니다. 히어로에 상하 여백이 필요하면 <code>LiveHeroCard</code> 루트에 <code>Modifier.padding(vertical = 6.dp)</code>를 넣으세요.
 </div>
 
 `sectioned()`는 `status`로 진행 중 → 예정 → 종료 순으로 묶는 순수 함수입니다.
@@ -132,23 +187,41 @@ fun sectioned(games: List<GameSummary>): List<Pair<String, List<GameSummary>>> =
 
 `GET /live/Schedule_Day/{오늘}` 한 번이 그날 KBO 전 경기(최대 5)의 상태·이닝·점수를 줍니다. 응답은 5KB 안팎입니다. **`STARTED`** 에서만 20초 간격(공식 앱은 4초지만 그렇게까지 칠 이유가 없습니다).
 
+`core/ui/LivePolling.kt` — 도메인을 모르는 조각이고 §3의 `GamesScreen`과 Step 7의 `GameDetailScreen`이 함께 쓰므로 `core/ui`에 둡니다. `feature/games`에 두면 Step 7이 feature를 가로질러 import하게 되어 Step 9 §8의 완료 조건(`feature` 안에 `import com.diamondscore.feature` 0건)이 깨집니다:
+
 ```kotlin
+package com.diamondscore.core.ui
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlin.random.Random
+import kotlinx.coroutines.delay
+
 @Composable
-fun LivePolling(vm: GamesViewModel, hasLive: Boolean) {
+fun LivePolling(hasLive: Boolean, intervalMs: Long = 20_000L, onTick: suspend () -> Unit) {
     val owner = LocalLifecycleOwner.current
-    LaunchedEffect(hasLive) {
+    LaunchedEffect(hasLive, intervalMs) {
         if (!hasLive) return@LaunchedEffect
         owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                vm.refreshDay()
-                delay(20_000L + Random.nextLong(-2000, 2000))   // jitter ±2s
+                onTick()                                        // suspend — 앞 요청이 끝난 뒤에 다음 대기가 시작된다
+                delay(intervalMs + Random.nextLong(-intervalMs / 10, intervalMs / 10))   // jitter ±10%
             }
         }
     }
 }
 ```
 
-화면에서 `LivePolling(vm, ui.games.any { it.status == GameStatus.LIVE })`. 라이브가 없어도 오늘 날짜로 진입할 때는 `refreshDay()`를 한 번 호출해 프리페치된 일정 위에 최신 상태(취소·선발 변경)를 덮습니다 — `LaunchedEffect(ui.date) { if (ui.date == LocalDate.now(SEOUL)) vm.refreshDay() }`. 목록 응답에는 이닝별 득점이 없으므로 상세 화면은 따로 폴링합니다(Step 7).
+`vm`이 아니라 `onTick`을 받는 이유는 Step 9에서 설정값(20초/30초/1분)을 `intervalMs`로 내려보내기 위해서입니다.
+§3의 `GamesScreen`에서는 `import com.diamondscore.core.ui.LivePolling`이 필요합니다.
+목록 응답에는 이닝별 득점이 없으므로 상세 화면은 따로 폴링합니다(Step 7).
+
+<div class="callout tip"><span class="t">여기까지가 튜토리얼 범위</span>
+계획서 §7.2의 <code>LivePoller</code>는 <strong>적응형 간격</strong>(라이브가 뜸하면 1.5배, 최대 40초)과 <strong>실패 시 backoff</strong>(2배, 최대 2분)까지 가집니다. 이 랩은 그중 <strong>요청 1개 · 20초 · jitter · <code>STARTED</code>에서만</strong>(계획서 §10의 차단 완화책 4종)과 single-flight(<code>refreshNow</code>의 <code>busy</code> 가드)만 구현합니다. 나머지 둘은 별도 클래스가 필요해 범위 밖입니다.
+</div>
 
 <div class="callout warn"><span class="t">홈으로 나가면 멈춰야 한다</span>
 <code>repeatOnLifecycle(STARTED)</code>가 백그라운드 진입 시 코루틴을 취소합니다. 안 쓰면 배터리·트래픽이 새고 차단 위험이 커집니다(§7).
@@ -156,12 +229,44 @@ fun LivePolling(vm: GamesViewModel, hasLive: Boolean) {
 
 ## 5. 즐겨찾는 구단 상단 고정
 
-Step 8에서 만들 즐겨찾기와 연결됩니다. Repository의 `observeByDate`를 즐겨찾기 Set과 `combine`해
-정렬 키를 얹으면, 목업처럼 즐겨찾는 구단 경기가 위로 올라옵니다.
+Step 8에서 `FavoritesRepository`를 만든 뒤 이 화면으로 돌아와 세 줄을 고칩니다 — 그때까지는 이 절을 건너뜁니다.
+
+```kotlin
+// 1) 생성자에 추가:  private val favorites: FavoritesRepository,
+// 2) combine 인자에 추가:  favorites.observeTeams(),   → 람다는 { (d, games), favs, s -> }
+// 3) GamesUiState(games = …) 를 아래처럼:  sectioned()의 filter가 순서를 보존하므로 섹션 구조는 그대로다
+games = games.sortedByDescending { it.home.id in favs || it.away.id in favs },
+```
 
 ## 6. 실행 확인
 
-<div class="checkpoint"><span class="t"></span> 목업의 홈 화면(진행 중·예정·종료·연기 섹션, 원정 먼저, 라이브 빨강)이 그대로 뜨고, 날짜 화살표로 과거/미래가 즉시(네트워크 없이) 바뀌면 성공. 경기일이면 30분 켜두고 자동 갱신 + 홈 복귀 시 폴링 정지/재개를 확인하세요.</div>
+`Scaffold`·`NavDisplay`는 Step 9에서 붙입니다. 그때까지는 `MainActivity`에 이 화면 하나만 임시로
+연결해 두고 Step 7·8도 같은 자리에서 바꿔 끼우며 확인합니다(완전한 코드).
+
+```kotlin
+package com.diamondscore
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import com.diamondscore.core.designsystem.DiamondScoreTheme
+import com.diamondscore.feature.games.GamesScreen
+import dagger.hilt.android.AndroidEntryPoint
+
+@AndroidEntryPoint                      // 없으면 hiltViewModel()이 실행 시 크래시한다
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            DiamondScoreTheme {
+                GamesScreen(onGame = {})     // Step 9에서 DiamondScoreApp()으로 교체
+            }
+        }
+    }
+}
+```
+
+<div class="checkpoint"><span class="t"></span> 홈 화면(진행 중·예정·종료·연기 섹션, 원정 먼저, 라이브 빨강)이 뜨고, 날짜 화살표로 과거/미래가 즉시(네트워크 없이) 바뀌면 성공. 비행기 모드는 두 경우를 나눠 보세요 — 앱을 <strong>켜 둔 채</strong> 비행기 모드로 바꾸면 캐시 위에 "마지막 갱신 n분 전" 배너가, 앱을 <strong>껐다 켠 뒤</strong> 비행기 모드로 들어가면 <code>lastOk</code>가 프로세스 메모리에만 있어 사라지므로 같은 자리에 "캐시 표시 중"이 떠야 합니다(§1 warn 콜아웃). 캐시가 없는 날이면 둘 다 "다시 시도"입니다. 경기일이면 30분 켜두고 자동 갱신 + 홈 복귀 시 폴링 정지/재개를 확인하세요.</div>
 
 <div class="pager">
 <a href="#/labs/step-5">← Step 5</a>

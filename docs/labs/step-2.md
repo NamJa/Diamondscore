@@ -36,7 +36,7 @@ android {
     }
     buildFeatures { compose = true }
 
-    compileOptions {
+    compileOptions {                    // Step 0이 예고한 "Java 17 기준" 설정은 여기 한 곳뿐입니다
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -49,13 +49,10 @@ android {
         }
     }
 }
-
-// Room 스키마 export 위치 (Step 4에서 exportSchema = true를 씁니다)
-ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 ```
 
 <div class="callout warn"><span class="t">AGP 9는 Kotlin이 내장이다</span>
-AGP 9.0부터 <strong>built-in Kotlin</strong>이 기본이라 <code>org.jetbrains.kotlin.android</code> 플러그인을 적용하지 <strong>않습니다</strong>(새 DSL과 비호환). 그래서 <code>android { kotlinOptions { } }</code>와 <code>android { kotlin { } }</code>도 없습니다 — 컴파일러 옵션은 최상위 <code>kotlin { compilerOptions { } }</code>에 씁니다. 별도 옵션이 없으면 jvmTarget은 위 <code>compileOptions.targetCompatibility</code>를 따라가므로 아무것도 더 쓸 필요가 없습니다.
+AGP 9.0부터 <strong>built-in Kotlin</strong>이 기본이라 <code>org.jetbrains.kotlin.android</code> 플러그인을 적용하지 <strong>않습니다</strong>(새 DSL과 비호환). 그래서 <code>android { kotlinOptions { } }</code>도 없습니다 — 컴파일러 옵션은 최상위 <code>kotlin { compilerOptions { } }</code>에 씁니다. 별도 옵션이 없으면 jvmTarget은 위 <code>compileOptions.targetCompatibility</code>를 따라가므로 아무것도 더 쓸 필요가 없습니다.
 </div>
 
 ## 3. version catalog (`gradle/libs.versions.toml`)
@@ -97,6 +94,7 @@ compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeB
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+compose-ui-text-google-fonts = { module = "androidx.compose.ui:ui-text-google-fonts" }
 compose-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
@@ -118,7 +116,7 @@ hilt-android-testing = { module = "com.google.dagger:hilt-android-testing", vers
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+room-testing = { module = "androidx.room:room-testing", version.ref = "room" }   # MigrationTestHelper용 — DB가 version 1이라 이 튜토리얼 코드에는 안 나옵니다(지우지 말 것: 계획서 §5.4가 Step 2를 전체 catalog로 둡니다)
 
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 retrofit-serialization = { module = "com.squareup.retrofit2:converter-kotlinx-serialization", version.ref = "retrofit" }
@@ -134,7 +132,8 @@ work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work"
 
 junit = { module = "junit:junit", version.ref = "junit" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
-turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }   # Flow 단언용 — Step 4의 Fake DAO가 flowOf라 실제로 쓰는 테스트는 없습니다(카탈로그에는 남겨 둡니다)
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }  # assertFailsWith·assertIs (Step 3)
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -142,12 +141,6 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
-```
-
-Gradle wrapper도 맞춰 올립니다 — **AGP 9.4는 Gradle 9.6.0 이상을 요구**합니다.
-
-```bash
-./gradlew wrapper --gradle-version 9.7.1
 ```
 
 <div class="callout warn"><span class="t">이 세 줄은 그냥 최신이 아니라 서로 묶여 있다</span>
@@ -210,6 +203,7 @@ dependencies {
     implementation(libs.work.runtime)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlin.test)    // assertFailsWith·assertIs (Step 3 매퍼 테스트)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.okhttp.mockwebserver)
@@ -217,9 +211,15 @@ dependencies {
 
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
+    // Hilt 계측 테스트를 실제로 작성할 때는 kspAndroidTest(libs.hilt.compiler)와
+    // HiltTestApplication을 띄우는 커스텀 러너가 더 필요합니다(이 튜토리얼 범위 밖).
     androidTestImplementation(libs.hilt.android.testing)
     debugImplementation(libs.compose.ui.test.manifest)
 }
+
+// Room 스키마 export 위치 — ksp 플러그인을 위에서 적용한 뒤라야 이 블록이 해석됩니다
+// (Step 4에서 exportSchema = true를 씁니다).
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 ```
 
 루트 `build.gradle.kts`:
@@ -241,8 +241,14 @@ plugins {
 }
 ```
 
+Gradle wrapper도 맞춰 올립니다 — **AGP 9.4는 Gradle 9.6.0 이상을 요구**합니다. 빌드 스크립트가 새 카탈로그와 맞아진 **지금** 실행하세요 — §3 직후에 돌리면 `app/build.gradle.kts`가 아직 옛 alias를 참조해 configuration 단계에서 깨집니다.
+
+```bash
+./gradlew wrapper --gradle-version 9.7.1
+```
+
 <div class="callout tip"><span class="t">material-icons-extended는 동결된 아티팩트</span>
-BOM이 <code>1.7.8</code>로 고정해 주며 그 이후 업데이트가 없습니다(deprecated). 이 앱은 아이콘 6개만 쓰므로 그대로 쓰되, 아이콘을 많이 넣게 되면 필요한 <code>ImageVector</code>만 직접 정의하는 쪽이 APK에 낫습니다.
+BOM이 <code>1.7.8</code>로 고정해 주며 그 이후 업데이트가 없습니다(deprecated). 이 앱은 아이콘 14종만 쓰므로 그대로 쓰되, 아이콘을 많이 넣게 되면 필요한 <code>ImageVector</code>만 직접 정의하는 쪽이 APK에 낫습니다.
 </div>
 
 ## 5. Hilt Application 클래스
@@ -283,8 +289,11 @@ class DiamondScoreApplication : Application()
 ```kotlin
 package com.diamondscore.core.designsystem
 
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
 // 다크(기본) — 근블랙 + 브로드캐스트 레드
@@ -319,11 +328,17 @@ val DsLightColors = lightColorScheme(
 data class DsExtras(
     val gold: Color, val win: Color, val loss: Color,
     val staleBg: Color, val staleLine: Color, val faint: Color,
+    // 목업이 본문 아래로 두 단계를 더 쓰고(팀명·보조 라벨 / 캡션·미세 수치),
+    // 스코어보드 승팀 약칭(Step 7 §2)처럼 액센트를 한 톤 낮춰 쓰는 자리가 있다.
+    // 목업에서 loss와 accentSoft는 같은 색이다(다크 #FF6B7F, 라이트 #C83250) — 역할이 달라 따로 둔다.
+    val textSecondary: Color, val textTertiary: Color, val accentSoft: Color,
 )
-val DarkExtras  = DsExtras(Color(0xFFE7B24A), Color(0xFF39D98A), Color(0xFFC83250),
-                           Color(0xFF241C0B), Color(0xFF4A3D1E), Color(0xFF4A4E5C))
+val DarkExtras  = DsExtras(Color(0xFFE7B24A), Color(0xFF39D98A), Color(0xFFFF6B7F),
+                           Color(0xFF241C0B), Color(0xFF4A3D1E), Color(0xFF4A4E5C),
+                           Color(0xFFC7CBD6), Color(0xFF6B7080), Color(0xFFFF6B7F))
 val LightExtras = DsExtras(Color(0xFFB98900), Color(0xFF1E9E5E), Color(0xFFC83250),
-                           Color(0xFFFBF3DC), Color(0xFFE8DCBE), Color(0xFFB4AFA4))
+                           Color(0xFFFBF3DC), Color(0xFFE8DCBE), Color(0xFFB4AFA4),
+                           Color(0xFF3A3833), Color(0xFF8A867D), Color(0xFFC83250))
 
 val LocalDsExtras = androidx.compose.runtime.staticCompositionLocalOf { DarkExtras }
 
@@ -336,14 +351,17 @@ object DsColors {
     val staleBg: Color   @Composable @ReadOnlyComposable get() = LocalDsExtras.current.staleBg
     val staleLine: Color @Composable @ReadOnlyComposable get() = LocalDsExtras.current.staleLine
     val muted2: Color    @Composable @ReadOnlyComposable get() = LocalDsExtras.current.faint
+    val textSecondary: Color @Composable @ReadOnlyComposable get() = LocalDsExtras.current.textSecondary
+    val textTertiary: Color  @Composable @ReadOnlyComposable get() = LocalDsExtras.current.textTertiary
+    val accentSoft: Color    @Composable @ReadOnlyComposable get() = LocalDsExtras.current.accentSoft
 }
 ```
 > `DsColors`는 `@Composable` 프로퍼티 getter라 컴포저블 안에서만 읽힙니다(모든 UI 코드가 그렇습니다).
-> 추가 import: `androidx.compose.material3.MaterialTheme`, `androidx.compose.runtime.{Composable, ReadOnlyComposable}`.
 
 <div class="callout tip"><span class="t">색을 읽는 법</span>
 배경·서피스·본문·라인·액센트는 <code>MaterialTheme.colorScheme.{background,surface,onSurface,onSurfaceVariant,outline,primary}</code>로, 골드·승/패는 <code>LocalDsExtras.current.{gold,win,loss}</code>로 읽습니다. 이렇게 하면 다크↔라이트 전환 시 색이 자동으로 바뀝니다.
-<br><strong><code>win</code>·<code>loss</code>는 아직 어느 화면도 쓰지 않습니다</strong> — 목업 팀 상세의 승/패 글자용으로 잡아 둔 값인데, Step 8은 그 자리를 공용 <code>GameCard</code>(승팀을 굵게)로 대신합니다. 팀 상세에 승/패 글자를 넣을 게 아니면 두 값은 지워도 됩니다.
+<br>본문 아래 두 단계는 <code>DsColors.textSecondary</code>(팀명·보조 라벨)와 <code>DsColors.textTertiary</code>(캡션·미세 수치), 한 톤 낮춘 액센트는 <code>DsColors.accentSoft</code>(Step 7 스코어보드의 승팀 약칭)입니다 — 화면 코드에 <code>Color(0xFF…)</code>를 직접 적지 않으려면 이 셋이 필요합니다.
+<br><strong><code>win</code>·<code>loss</code>는 Step 5 <code>StandingRow</code>의 연속 컬럼이 씁니다</strong>(연승이면 <code>win</code>, 연패면 <code>loss</code>) — <strong>지우지 마세요.</strong> 목업 팀 상세의 승/패 글자 자리는 Step 8이 공용 <code>GameCard</code>(승팀을 굵게)로 대신합니다.
 </div>
 
 ## 7. 타이포그래피 — Bebas Neue + Archivo + Noto Sans KR
@@ -354,7 +372,7 @@ object DsColors {
 `app/build.gradle.kts` 의존성에 추가:
 
 ```kotlin
-implementation("androidx.compose.ui:ui-text-google-fonts")
+implementation(libs.compose.ui.text.google.fonts)
 ```
 
 `core/designsystem/Type.kt`:
@@ -367,13 +385,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.unit.sp
-import com.diamondscore.R
+import androidx.compose.ui.unit.em
 
 private val provider = GoogleFont.Provider(
     "com.google.android.gms.fonts",
     "com.google.android.gms",
-    R.array.com_google_android_gms_fonts_certs,
+    // 인증서 배열은 ui-text-google-fonts AAR이 들고 있습니다. AGP 9의 non-transitive R 탓에
+    // 앱 R(com.diamondscore.R)에는 들어오지 않으므로 라이브러리 R을 정규화해 씁니다.
+    androidx.compose.ui.text.googlefonts.R.array.com_google_android_gms_fonts_certs,
 )
 val Bebas   = FontFamily(Font(GoogleFont("Bebas Neue"), provider, FontWeight.Normal))
 val Archivo = FontFamily(
@@ -382,14 +401,16 @@ val Archivo = FontFamily(
     Font(GoogleFont("Archivo"), provider, FontWeight.Bold),
 )
 
-/** 본문·UI (한글은 시스템 Noto Sans KR로 자동 폴백). */
+/** 본문·UI (한글은 시스템 Noto Sans KR로 자동 폴백). 뒤 단계가 실제로 쓰는 스타일만 덮습니다. */
 val DsTypography = Typography().let { t ->
     t.copy(
-        titleLarge = t.titleLarge.copy(fontFamily = Archivo, fontWeight = FontWeight.Bold),
-        bodyLarge  = t.bodyLarge.copy(fontFamily = Archivo),
-        bodyMedium = t.bodyMedium.copy(fontFamily = Archivo),
-        labelLarge = t.labelLarge.copy(fontFamily = Archivo, fontWeight = FontWeight.Medium),
-        labelSmall = t.labelSmall.copy(fontFamily = Archivo),
+        titleMedium = t.titleMedium.copy(fontFamily = Archivo, fontWeight = FontWeight.Bold),
+        bodyLarge   = t.bodyLarge.copy(fontFamily = Archivo),
+        bodyMedium  = t.bodyMedium.copy(fontFamily = Archivo),
+        // labelLarge는 화면 코드가 직접 부르지 않지만 M3 Button·TextButton의 기본 스타일이라 남깁니다.
+        labelLarge  = t.labelLarge.copy(fontFamily = Archivo, fontWeight = FontWeight.Medium),
+        labelMedium = t.labelMedium.copy(fontFamily = Archivo),
+        labelSmall  = t.labelSmall.copy(fontFamily = Archivo),
     )
 }
 
@@ -403,7 +424,7 @@ val ScoreNumber = TextStyle(
 ```
 
 <div class="callout tip"><span class="t">오프라인 대안</span>
-Google Fonts 다운로드가 부담되면 <code>Bebas Neue</code>·<code>Archivo</code> <code>.ttf</code>를 <code>res/font/</code>에 넣고 <code>FontFamily(Font(R.font.bebas_neue))</code>로 바꾸면 됩니다. 한글은 시스템 Noto Sans KR가 폴백합니다. <code>Display</code>는 콘덴스드라 <strong>초대형 스코어·섹션 헤더 전용</strong>, 본문엔 쓰지 않습니다.
+Google Fonts 다운로드가 부담되면 <code>Bebas Neue</code>·<code>Archivo</code> <code>.ttf</code>를 <code>res/font/</code>에 넣고 <code>FontFamily(Font(R.font.bebas_neue))</code>로 바꾸면 됩니다(이 경로에서는 앱 리소스라 <code>import com.diamondscore.R</code>가 필요합니다). 한글은 시스템 Noto Sans KR가 폴백합니다. <code>Display</code>는 콘덴스드라 <strong>초대형 스코어·섹션 헤더 전용</strong>, 본문엔 쓰지 않습니다.
 </div>
 
 ## 8. 구단 컬러 + 한국어 팀명
@@ -480,12 +501,12 @@ KIA 레드가 앱 액센트와 우연히 같은 계열이라 이 구분이 안 �
 </div>
 
 <div class="callout tip"><span class="t">경계 규칙</span>
-이 앱이 지키는 규칙은 두 개뿐입니다 — <strong><code>feature</code>·<code>core/designsystem</code>은 <code>data</code>를 참조하지 않는다</strong>, <strong>DTO·Room Entity는 <code>data</code> 레이어를 벗어나지 않는다.</strong> 위 분리가 첫 번째 규칙을 위한 것입니다.
+이 앱이 지키는 규칙은 두 개뿐입니다 — <strong><code>feature</code>·<code>core/ui</code>·<code>core/designsystem</code>은 <code>data</code>의 내부(<code>WisetotoApi</code>·DAO·DTO·Entity)를 참조하지 않는다 — 넘어오는 것은 Repository와 <code>domain/model</code>뿐</strong>, <strong>DTO·Room Entity는 <code>data</code> 레이어를 벗어나지 않는다.</strong> 위 분리는 그 둘에서 파생되는 규칙(<strong><code>data</code>는 Compose를 모른다</strong>)을 위한 것입니다.
 </div>
 
 ## 9. 내비게이션 키 (Navigation 3)
 
-Navigation 3는 문자열 route가 아니라 **타입 있는 키 객체**로 이동합니다. 화면 인자(`eventId`·`teamId`)가
+Navigation 3는 문자열 route가 아니라 **타입 있는 키 객체**로 이동합니다. 화면 인자(`gameId`·`teamId`)가
 키의 프로퍼티가 되므로 `NavType`·`navArgument`·파싱이 전부 사라집니다.
 
 키는 화면들이 서로를 직접 참조하지 않도록 한곳에 모읍니다. `core/navigation/DsNavKeys.kt` —
@@ -504,7 +525,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object FavoritesKey : NavKey
 
 // 인자를 받는 화면
-@Serializable data class GameDetailKey(val eventId: Long) : NavKey
+@Serializable data class GameDetailKey(val gameId: Long) : NavKey
 @Serializable data class TeamDetailKey(val teamId: Long) : NavKey
 @Serializable data class TeamRosterKey(val teamId: Long) : NavKey      // 팀 정보 — 선수단·연혁 (Step 8)
 // Player_Info 응답에는 소속 팀이 없다 → 팀 색·팀명을 위해 키가 teamId를 함께 싣는다 (Step 8-4)
@@ -544,8 +565,10 @@ fun DiamondScoreTheme(dark: Boolean = true, content: @Composable () -> Unit) {
 }
 ```
 
-`MainActivity`의 `setContent { }`를 `DiamondScoreTheme { … }`로 감쌉니다. `dark`는 Step 9 설정에서
-DataStore 값으로 제어합니다(기본 다크).
+템플릿이 만든 `com.diamondscore.ui.theme` 패키지(`Color.kt`·`Theme.kt`·`Type.kt`)는 **통째로 삭제**합니다 —
+같은 이름의 `DiamondScoreTheme`이 들어 있어 위 함수와 충돌합니다. `MainActivity`의 import를
+`com.diamondscore.core.designsystem.DiamondScoreTheme`로 바꾸고, `setContent { }`를
+`DiamondScoreTheme { … }`로 감쌉니다. `dark`는 Step 9 설정에서 DataStore 값으로 제어합니다(기본 다크).
 
 ## 11. 빌드 확인
 

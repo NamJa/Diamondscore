@@ -17,8 +17,11 @@ Navigation 3는 **back stack이 그냥 관찰 가능한 리스트**입니다. `N
 ```kotlin
 package com.diamondscore
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavEntry
@@ -29,6 +32,17 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import com.diamondscore.core.navigation.*
+import com.diamondscore.core.ui.DsBottomBar
+import com.diamondscore.core.ui.DsTab
+import com.diamondscore.feature.favorites.FavoritesScreen
+import com.diamondscore.feature.gamedetail.GameDetailScreen
+import com.diamondscore.feature.games.GamesScreen
+import com.diamondscore.feature.players.PlayerDetailScreen
+import com.diamondscore.feature.settings.SettingsScreen
+import com.diamondscore.feature.standings.StandingsScreen
+import com.diamondscore.feature.teams.TeamDetailScreen
+import com.diamondscore.feature.teams.TeamRosterScreen
+import com.diamondscore.feature.teams.TeamsScreen
 
 private val DsTab.root: NavKey
     get() = when (this) {
@@ -45,7 +59,10 @@ private val DsTab.root: NavKey
 private fun dsEntryProvider(stack: NavBackStack<NavKey>): (NavKey) -> NavEntry<NavKey> =
     entryProvider {
         entry<GamesKey> {
-            GamesScreen(onGame = { id -> stack.add(GameDetailKey(id)) })
+            GamesScreen(
+                onGame = { id -> stack.add(GameDetailKey(id)) },
+                onSettings = { stack.add(SettingsKey) },      // 목록 헤더 톱니(Step 6 §3)
+            )
         }
         entry<StandingsKey> {
             StandingsScreen(onTeam = { id -> stack.add(TeamDetailKey(id)) })
@@ -119,8 +136,50 @@ fun DiamondScoreApp() {
 <code>entryProvider</code>를 <code>DiamondScoreApp</code> 안에서 한 번만 만들고 "현재 탭 stack"을 클로저로 잡으면 조용히 깨집니다. <code>rememberDecoratedNavEntries</code>는 <strong>back stack 내용이 바뀔 때만</strong> 엔트리를 다시 만들기 때문에, 첫 컴포지션(경기 탭)에서 만들어진 순위·팀·즐겨찾기 엔트리가 <strong>경기 탭 stack</strong>을 잡은 채 남습니다. 그 상태로 순위 탭에서 팀을 누르면 팀 상세가 경기 탭에 쌓입니다. 위처럼 <code>stack</code>을 <strong>인자로 받는 함수</strong>로 만들면 애초에 잡을 수가 없습니다.
 </div>
 
-`MainActivity`는 `setContent { DiamondScoreTheme { DiamondScoreApp() } }`이고, `@AndroidEntryPoint`가
-붙어 있어야 `hiltViewModel()`이 동작합니다.
+`MainActivity`는 `@AndroidEntryPoint`가 붙어 있어야 `hiltViewModel()`이 동작합니다. 테마는 여기서
+정해집니다 — §2에서 만들 `SettingsStore`의 값을 Step 2 §10의 `DiamondScoreTheme(dark = …)`에 넘깁니다.
+
+`app/src/main/java/com/diamondscore/MainActivity.kt` (완전한 코드) — `pollIntervalMs`·`LocalPollIntervalMs`·
+`SettingsViewModel`·`SettingsState`는 §2에서 만드니, **§2를 먼저 만든 뒤 붙여넣으세요**:
+
+```kotlin
+package com.diamondscore
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.diamondscore.core.common.pollIntervalMs
+import com.diamondscore.core.designsystem.DiamondScoreTheme
+import com.diamondscore.core.ui.LocalPollIntervalMs
+import com.diamondscore.feature.settings.SettingsViewModel
+import dagger.hilt.android.AndroidEntryPoint
+
+@AndroidEntryPoint
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            val settings: SettingsViewModel = hiltViewModel()
+            val s by settings.ui.collectAsStateWithLifecycle()
+            // 폴링 간격은 값으로만 내려보낸다 — feature:games가 feature:settings를 모르게(§2)
+            CompositionLocalProvider(LocalPollIntervalMs provides pollIntervalMs(s.interval)) {
+                DiamondScoreTheme(
+                    dark = when (s.theme) {           // 세그먼트 라벨 → Boolean
+                        "라이트" -> false
+                        "다크" -> true
+                        else -> isSystemInDarkTheme()   // "시스템"
+                    }
+                ) { DiamondScoreApp() }
+            }
+        }
+    }
+}
+```
 
 <div class="callout warn"><span class="t">decorator 2개는 옵션이 아니다</span>
 <code>NavDisplay</code>의 기본값은 <code>rememberSaveableStateHolderNavEntryDecorator()</code> 하나뿐입니다. 여기에 <strong><code>rememberViewModelStoreNavEntryDecorator()</code></strong>를 직접 추가해야:
@@ -168,7 +227,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { DsIcon(Icons.AutoMirrored.Outlined.ArrowBack) }
-            TopBar("설정")
+            TopBar("설정", accentDot = false)   // 설정 화면은 워드마크 마침표 없음(목업)
         }
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(26.dp)) {
             SettingGroup("테마") {
@@ -191,23 +250,66 @@ fun SettingsScreen(onBack: () -> Unit) {
 }
 ```
 
-**ViewModel · 설정 헬퍼** (완전한 코드) — `Caption`·`DsIcon`은 Step 5 §6.
+설정 값은 DataStore에 저장합니다. 값 자체는 화면과 데이터 양쪽이 쓰는 도메인 모델이라
+`domain/model/Settings.kt`에 두고, 읽기·쓰기는 `data/repository/SettingsStore.kt`가 맡습니다
+(`datastore-preferences`는 Step 2 §4에 이미 들어 있으니 의존성은 추가하지 않습니다).
 
 ```kotlin
-data class SettingsState(val theme: String = "다크", val interval: String = "20초")
+package com.diamondscore.domain.model
 
+/** 설정 값. 세그먼트 라벨을 그대로 저장한다("시스템"·"라이트"·"다크" / "20초"·"30초"·"1분"). */
+data class SettingsState(val theme: String = "다크", val interval: String = "20초")
+```
+
+`data/repository/SettingsStore.kt` (완전한 코드):
+
+```kotlin
+package com.diamondscore.data.repository
+
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.diamondscore.domain.model.SettingsState
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+// 델리게이트는 파일 최상단에 한 번만. 두 번 선언하면 같은 파일을 두 인스턴스가 열어 런타임에 터진다.
+private val Context.dataStore by preferencesDataStore("settings")
+
+/** `@Inject` 생성자라 Hilt가 바인딩을 알아서 만든다 — `@Provides` 모듈이 따로 필요 없다. */
+@Singleton
+class SettingsStore @Inject constructor(@ApplicationContext private val ctx: Context) {
+    private val THEME = stringPreferencesKey("theme")
+    private val INTERVAL = stringPreferencesKey("interval")
+
+    val state: Flow<SettingsState> = ctx.dataStore.data.map { p ->
+        SettingsState(p[THEME] ?: "다크", p[INTERVAL] ?: "20초")
+    }
+
+    suspend fun setTheme(v: String) { ctx.dataStore.edit { it[THEME] = v } }
+    suspend fun setInterval(v: String) { ctx.dataStore.edit { it[INTERVAL] = v } }
+}
+```
+
+**ViewModel · 설정 헬퍼** (생략 없는 구현 — 같은 파일 `feature/settings/SettingsScreen.kt`에 이어 붙입니다) — `Caption`·`DsIcon`은 Step 5 §6.
+
+```kotlin
 @HiltViewModel
 class SettingsViewModel @Inject constructor(private val store: SettingsStore) : ViewModel() {
     val ui = store.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsState())
     fun setTheme(v: String) = viewModelScope.launch { store.setTheme(v) }
     fun setInterval(v: String) = viewModelScope.launch { store.setInterval(v) }
 }
-// SettingsStore = Proto/Preferences DataStore 래퍼 (state: Flow<SettingsState> + setter 2개)
+// SettingsStore는 위 data/repository/SettingsStore.kt. @Inject 생성자라 그대로 주입된다.
 
 @Composable
 fun SettingGroup(title: String, content: @Composable ColumnScope.() -> Unit) = Column {
-    Text(title, Modifier.padding(bottom = 10.dp), style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.Bold, color = DsColors.muted2)
+    Text(title, Modifier.padding(bottom = 10.dp),                       // 목업 섹션 헤더 = Bebas 15 / .14em
+        style = Display.copy(fontSize = 15.sp, letterSpacing = 0.14.em), color = DsColors.muted2)
     content()
 }
 
@@ -219,7 +321,7 @@ fun DsSegmented(options: List<String>, selected: String, onSelect: (String) -> U
     horizontalArrangement = Arrangement.spacedBy(4.dp)) {
     options.forEach { opt ->
         val on = opt == selected
-        Box(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+        Box(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))   // 터치 48dp
             .background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent)   // 액티브 = 레드
             .clickable { onSelect(opt) }.padding(vertical = 8.dp), Alignment.Center) {
             Text(opt, style = MaterialTheme.typography.bodyMedium,
@@ -257,8 +359,48 @@ fun SettingLink(label: String, onClick: () -> Unit = {}) = Row(
 }
 ```
 
-테마 선택은 DataStore(`SettingsStore`)에 저장하고 `DiamondScoreTheme`가 이를 읽어 다크/라이트를 전환합니다
-(라이트 스킴은 Step 2 §6의 콜아웃대로 하나 더 정의).
+라이트 스킴(`DsLightColors`·`LightExtras`)은 Step 2 §6에, `DiamondScoreTheme(dark: Boolean)`의 분기는
+Step 2 §10에 **이미 있습니다** — 여기서 더 정의할 것은 없고, 저장된 값을 `dark`로 넘기는 배선(§1의
+`MainActivity`)이 전부입니다.
+
+갱신 간격은 Step 6에서 `core/ui`에 만든 `LivePolling(hasLive, intervalMs, onTick)`(§4)으로 들어갑니다.
+라벨을 밀리초로 바꾸는 함수 하나면 됩니다:
+
+```kotlin
+// core/common/PollInterval.kt — 라벨→ms 변환은 Compose를 모르는 순수 함수라 core/common에 둔다.
+// 호출하는 곳은 §1의 MainActivity 한 곳이고, feature:games는 아래 LocalPollIntervalMs만 읽는다.
+package com.diamondscore.core.common
+
+/** 설정 라벨 → 폴링 간격(ms). 공식 앱(4초)보다 느린 값만 고를 수 있다. */
+fun pollIntervalMs(interval: String): Long = when (interval) {
+    "30초" -> 30_000L
+    "1분" -> 60_000L
+    else -> 20_000L          // "20초" = 기본값
+}
+```
+
+값을 화면까지 내리는 길도 같은 규칙을 탑니다 — `GamesScreen`이 `SettingsViewModel`(`feature/settings`)을
+직접 가져오면 §5.5를 어기므로, 설정을 아는 `:app`이 넣고 화면은 값만 읽습니다:
+
+```kotlin
+// core/ui/LocalPollInterval.kt
+package com.diamondscore.core.ui
+
+import androidx.compose.runtime.staticCompositionLocalOf
+
+/** 폴링 간격(ms). §1의 MainActivity가 설정값을 넣는다. */
+val LocalPollIntervalMs = staticCompositionLocalOf { 20_000L }
+```
+
+`GamesScreen`(Step 6 §3)의 폴링 호출부에 그대로 끼웁니다 — 설정을 바꾸면 다음 틱부터 간격이 달라집니다:
+
+```kotlin
+// LivePolling은 Step 6에서 core/ui에 만든 컴포저블 — GamesScreen도 GameDetailScreen도 여기서 가져온다
+LivePolling(
+    hasLive = ui.games.any { it.status == GameStatus.LIVE },
+    intervalMs = LocalPollIntervalMs.current,          // core/ui
+) { vm.refreshNow() }
+```
 
 ## 3. 상태 화면 연결
 
@@ -279,17 +421,28 @@ import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 ```
 
+`ExperimentalMaterial3AdaptiveApi`는 `@RequiresOptIn` level이 기본값(ERROR)이라 경고가 아니라
+**컴파일 에러**입니다 — 아래 `dsEntryProvider`와 `DiamondScoreApp` **양쪽**에 `@OptIn`을 붙여야 빌드됩니다.
+`DiamondScoreApp.kt` 최상단에 `@file:OptIn(ExperimentalMaterial3AdaptiveApi::class)` 한 줄을 두고
+개별 `@OptIn`을 빼도 됩니다.
+
 1. **어느 키가 어느 pane인지** `entry`의 `metadata`로 표시합니다 — §1의 `dsEntryProvider`에 인자만 추가:
 
 ```kotlin
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)                // listPane()·detailPane()
 private fun dsEntryProvider(stack: NavBackStack<NavKey>): (NavKey) -> NavEntry<NavKey> =
     entryProvider {
         entry<GamesKey>(
             metadata = ListDetailSceneStrategy.listPane(
-                detailPlaceholder = { EmptyDetail("경기를 선택하세요") },   // 넓은 화면에서 오른쪽 pane
+                detailPlaceholder = {                                     // 넓은 화면에서 오른쪽 pane
+                    CenterColumn { Text("경기를 선택하세요", color = DsColors.muted2) }   // Step 5 §6
+                },
             )
         ) {
-            GamesScreen(onGame = { id -> stack.add(GameDetailKey(id)) })
+            GamesScreen(
+                onGame = { id -> stack.add(GameDetailKey(id)) },
+                onSettings = { stack.add(SettingsKey) },      // 목록 헤더 톱니(Step 6 §3)
+            )
         }
         entry<GameDetailKey>(metadata = ListDetailSceneStrategy.detailPane()) { key ->
             GameDetailScreen(key, onBack = { stack.removeLastOrNull() })
@@ -338,14 +491,96 @@ fun DiamondScoreApp() {
 Nav2의 <code>NavigableListDetailPaneScaffold</code>는 별도 navigator와 별도 화면 트리를 요구해서, 폰용 그래프와 태블릿용 그래프가 사실상 두 벌이 됐습니다. Nav3의 <code>SceneStrategy</code>는 <strong>같은 back stack</strong>을 보고 "이 항목들을 한 화면에 같이 그릴 수 있나?"만 판단합니다. 그래서 목적지 정의는 한 벌이고, pane 배치·predictive back·창 크기 대응은 전략이 담당합니다.
 </div>
 
-<div class="checkpoint"><span class="t"></span> compact(폰)은 하단 네비 + 단일 화면, expanded(태블릿)는 목업처럼 왼쪽 목록·오른쪽 상세가 나란히 뜨면 성공. 태블릿에서 경기를 고르지 않은 상태에서 <code>detailPlaceholder</code>가 보이는지도 확인하세요.</div>
+3. **넓은 화면은 하단 탭바 대신 내비 레일.** 목업 태블릿 아트보드와 계획서 §5.5(medium 이상 = rail)가
+   요구하는 부분입니다. 레일은 목업대로 아이콘 없이 라벨만 세로로 세웁니다:
+
+```kotlin
+// core/ui/DsBottomBar.kt — Step 5 §1의 DsBottomBar 아래에 추가
+@Composable
+fun DsNavRail(current: DsTab, onSelect: (DsTab) -> Unit) = Column(
+    Modifier.fillMaxHeight().width(92.dp).padding(top = 24.dp),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(26.dp),
+) {
+    DsTab.entries.forEach { tab ->
+        Text(tab.label, Modifier.clickable { onSelect(tab) }                  // 터치 48dp(15sp + 위아래 14dp)
+            .padding(vertical = 14.dp, horizontal = 8.dp),
+            style = Display.copy(fontSize = 15.sp),
+            color = if (tab == current) DsColors.live else DsColors.muted2)
+    }
+}
+```
+
+   `DiamondScoreApp`의 `Scaffold`를 폭으로 감쌉니다. 600dp는 material3 adaptive의 medium 경계이고,
+   계획서 §5.5대로 **medium부터 레일**입니다. pane 분할 시점은 이보다 늦습니다 —
+   `ListDetailSceneStrategy`가 쓰는 기본 directive(`calculatePaneScaffoldDirective`)는 compact·medium을
+   모두 1-pane으로 보고 **expanded(840dp)부터** 2-pane이므로, 레일이 먼저 나타나고 목록·상세가 나란히
+   서는 건 그보다 넓어진 뒤입니다:
+
+```kotlin
+BoxWithConstraints {
+    val rail = maxWidth >= 600.dp
+    Row {
+        if (rail) DsNavRail(tab) { tab = it }
+        Scaffold(bottomBar = { if (!rail) DsBottomBar(tab) { tab = it } }) { pad ->
+            NavDisplay(
+                entries = decorated.getValue(tab),
+                onBack = { current.removeLastOrNull() },
+                sceneStrategy = listDetail,
+                modifier = Modifier.padding(pad),
+            )
+        }
+    }
+}
+```
+
+<div class="checkpoint"><span class="t"></span> compact(폰)은 하단 네비 + 단일 화면, expanded(태블릿)는 목업처럼 왼쪽 레일 + 목록·상세가 나란히 뜨면 성공. 태블릿에서 경기를 고르지 않은 상태에서 <code>detailPlaceholder</code>가 보이는지도 확인하세요.</div>
 
 ## 5. 접근성
 
-- **TalkBack**: 라인스코어에 요약 `contentDescription`("1회 초 원정 1점"), 스코어보드 → 라인스코어 → 정보 순 읽기.
-- **터치 48dp**: 날짜 화살표·별·세그먼트.
+컴포넌트 쪽 코드는 이미 들어가 있습니다 — 라인스코어 요약 semantics는 **Step 5 §3**에서, 아이콘마다
+`contentDescription`을 넘길 수 있게 연 `DsIcon`은 **Step 5 §6**에서 넣었습니다. 여기서 다시 정의하지 말고,
+기기에서 켜 놓고 점검만 합니다.
+
+- **TalkBack**: 라인스코어가 요약("1회 초 원정 1점")으로 읽히는지, 스코어보드 → 라인스코어 → 정보 순인지.
+- **터치 48dp**: 날짜 화살표·별·세그먼트(§2의 `DsSegmented`·§4의 `DsNavRail`에서 이미 맞췄습니다).
 - **글꼴 200%**: 라인스코어가 가로 스크롤로 살아남는지.
 - 팀 컬러 바 등 장식은 `contentDescription = null`, 색만으로 승패를 전달하지 않기(텍스트 병행).
+- 로딩 skeleton(`LoadingCards`)이 TalkBack에 읽히지 않는지(계획서 §1.5).
+- 점수 변경 애니메이션이 300ms 이내이고 시스템 "애니메이션 줄이기"를 존중하는지(계획서 §1.5).
+
+계측 테스트는 Hilt 없이 도는 것부터 하나 둡니다 — 그래야 아래 명령이 빈 태스크로 지나가지 않습니다.
+`app/src/androidTest/java/com/diamondscore/SettingsUiTest.kt` (완전한 코드):
+
+```kotlin
+package com.diamondscore
+
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import com.diamondscore.core.designsystem.DiamondScoreTheme
+import com.diamondscore.feature.settings.DsSegmented
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+
+class SettingsUiTest {
+    @get:Rule val compose = createComposeRule()
+
+    @Test fun 세그먼트를_누르면_선택값이_바뀐다() {
+        var picked = "20초"
+        compose.setContent {
+            DiamondScoreTheme { DsSegmented(listOf("20초", "30초", "1분"), picked) { picked = it } }
+        }
+        compose.onNodeWithText("1분").performClick()
+        assertEquals("1분", picked)
+    }
+}
+```
+
+<div class="callout warn"><span class="t">Hilt 계측 테스트는 범위 밖</span>
+<code>hiltViewModel()</code>을 쓰는 화면(<code>SettingsScreen</code>·<code>GamesScreen</code>)을 통째로 띄우려면 <code>HiltTestApplication</code>을 올리는 커스텀 러너와 <code>kspAndroidTest</code>가 더 필요합니다(Step 2 §4 주석). 그래서 계측 테스트는 <strong>ViewModel을 모르는 컴포저블</strong>만 대상으로 둡니다 — 나머지 접근성 항목은 TalkBack·글꼴 200%를 켜고 손으로 확인하세요.
+</div>
 
 ```bash
 ./gradlew :app:connectedDebugAndroidTest
@@ -353,13 +588,15 @@ Nav2의 <code>NavigableListDetailPaneScaffold</code>는 별도 navigator와 별�
 
 ## 6. 성능
 
-- UI state는 `@Immutable`, 리스트는 `ImmutableList`로 strong-skipping 유지.
+- UI state는 `@Immutable` data class로, 리스트는 `List` 그대로. Kotlin 2.4는 strong skipping이 기본이라
+  `kotlinx-collections-immutable` 의존성 없이도 스킵됩니다 — 리스트를 담은 홀더에 `@Immutable`(불변) 또는
+  `@Stable`(바뀌면 알려 준다)만 붙이면 충분합니다.
 - `items(key = { it.id })` 안정 key(Step 6).
 - `AsyncImage`는 크기 고정(서브컴포지션 회피).
 
-```bash
-./gradlew :app:generateBaselineProfile
-```
+<div class="callout warn"><span class="t">Baseline Profile은 이 튜토리얼 범위 밖</span>
+<code>:app:generateBaselineProfile</code>은 <code>androidx.baselineprofile</code> 플러그인과 매크로벤치마크용 <code>:baselineprofile</code> 모듈이 있어야 생기는 태스크입니다. 이 앱은 <code>:app</code> 한 모듈이라 지금 실행하면 <code>Task 'generateBaselineProfile' not found</code>가 납니다 — 계획서의 <code>DS-074</code>로 남겨 둡니다.
+</div>
 
 ## 7. R8 릴리스 검증
 
@@ -384,9 +621,13 @@ R8이 kotlinx.serialization DTO를 지우면 릴리스에서만 파싱 크래시
 - [ ] 기록이 없는 칸이 `0`이 아니라 `—`로 보인다
 - [ ] 경기→팀, 순위→팀, 팀→선수단→선수 이동과 back 문맥 복원
 - [ ] 오프라인에서 캐시 + 마지막 갱신 표시
-- [ ] 범위 밖(볼카운트·문자중계·라인업·개인 순위)의 UI 자리를 만들지 않았다
+- [ ] 범위 밖(볼카운트·문자중계·라인업·개인 순위)의 UI 자리를 만들지 않았다(알림 placeholder는 계획서 §1.3이 허용한 예외)
 - [ ] 팀 색과 앱 액센트가 섞이지 않았다 — 두산(네이비)·KIA(레드)를 번갈아 열어 확인
 - [ ] compact/expanded, 다크(+선택 시 라이트), 200% 글꼴 검증
+- [ ] DTO·Entity가 `data` 밖으로 새지 않았다 — `grep -rn "Dto\|Entity" app/src/main/java/com/diamondscore/feature app/src/main/java/com/diamondscore/core | wc -l`이 `0`
+- [ ] `data`는 Compose를 모른다 — `grep -rn "androidx.compose" app/src/main/java/com/diamondscore/data | wc -l`이 `0`
+- [ ] `feature/x`가 `feature/y`를 import하지 않는다 — `grep -rn "import com.diamondscore.feature" app/src/main/java/com/diamondscore/feature | wc -l`이 `0`
+- [ ] ViewModel 생성자가 `WisetotoApi`·DAO를 직접 받지 않는다 — Repository만 주입(계획서 §11)
 - [ ] R8 릴리스 빌드가 실제로 동작
 
 <div class="callout ok"><span class="t">완성 🎉</span>

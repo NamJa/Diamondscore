@@ -16,7 +16,7 @@
 
 1. **위에서부터 순서대로** 진행하세요. 각 Step은 이전 Step의 결과물 위에 쌓입니다.
 2. 각 Step 안의 `## 1`, `## 2` … 는 **작은 단계**입니다. 코드 블록은 그대로 복사해 넣으세요.
-3. 각 작은 단계 끝의 **✅ 체크포인트**로 제대로 됐는지 확인한 뒤 다음으로 넘어갑니다.
+3. 각 Step 끝(일부 Step은 중간에도) 나오는 **✅ 체크포인트**로 제대로 됐는지 확인한 뒤 다음으로 넘어갑니다.
 4. 페이지 맨 아래 **"이 단계 완료로 표시"** 버튼을 누르면 위 진행률에 반영됩니다(브라우저에 저장).
 
 <div class="callout danger">
@@ -38,7 +38,7 @@ wisetoto API는 <strong>날짜별 일정·이닝별 득점·R/H/E·순위·구�
 <a href="#/labs/step-6"><span class="n">Step 6</span><span class="h">경기 목록</span><span class="d">⏱ 90분 · 날짜 네비·라이브 폴링</span></a>
 <a href="#/labs/step-7"><span class="n">Step 7</span><span class="h">경기 상세</span><span class="d">⏱ 80분 · 스코어보드·라인스코어</span></a>
 <a href="#/labs/step-8"><span class="n">Step 8</span><span class="h">순위·팀·선수·즐겨찾기</span><span class="d">⏱ 2시간 30분 · 순위표·팀 상세·선수단·선수 상세</span></a>
-<a href="#/labs/step-9"><span class="n">Step 9</span><span class="h">마감·릴리스</span><span class="d">⏱ 90분 · 상태·적응형·성능·R8</span></a>
+<a href="#/labs/step-9"><span class="n">Step 9</span><span class="h">마감·릴리스</span><span class="d">⏱ 90분 · 탭 연결·설정·적응형·성능·R8</span></a>
 </div>
 
 <div class="callout tip">

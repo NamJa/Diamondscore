@@ -47,8 +47,9 @@ data class GameSummary(
     val homeRuns: Int?, val awayRuns: Int?,   // 경기 전·취소는 null (0 아님)
     val winner: Winner?,             // FINAL일 때만
     val wentExtra: Boolean,
+    val finalInning: Int? = null,    // 마지막(진행 중이면 현재) 이닝 — "연장 11회" 표기용
     val venueShort: String? = null,  // 홈구장 도시(예: 광주) — 앱 리소스(KBO_TEAMS)에서
-    val homeStarter: String? = null, // 선발투수 — Schedule_Day에만 있음
+    val homeStarter: String? = null, // 선발투수 — 당일 Schedule_Day에만 있음(미래 날짜 행은 null)
     val awayStarter: String? = null,
 )
 
@@ -173,7 +174,7 @@ import kotlinx.serialization.Serializable
     @SerialName("away_team_name") val awayTeamName: String? = null,
     @SerialName("home_score") val homeScore: String? = null,           // 문자열! 취소 경기는 null
     @SerialName("away_score") val awayScore: String? = null,
-    @SerialName("home_pitcher") val homePitcher: String? = null,       // 선발 (Schedule_Day)
+    @SerialName("home_pitcher") val homePitcher: String? = null,       // 선발 — 당일 Schedule_Day에만 (미래 날짜는 null)
     @SerialName("away_pitcher") val awayPitcher: String? = null,
 )
 
@@ -291,6 +292,15 @@ import kotlinx.serialization.Serializable
     val np: String? = null, val era: String? = null,
     val h: String? = null, val hr: String? = null, val so: String? = null,
 )
+
+// ── 앱 부트스트랩 /extra/notice ──
+@Serializable data class NoticeDto(
+    val server: NextActionDto? = null,     // 서버 차단 신호
+    val update: NextActionDto? = null,     // 강제 업데이트 신호
+)
+@Serializable data class NextActionDto(
+    @SerialName("next_action") val nextAction: String? = null,   // 평소엔 빈 문자열
+)
 ```
 
 <div class="callout warn"><span class="t">이 두 DTO는 <code>null</code>투성이가 정상이다</span>
@@ -342,6 +352,10 @@ interface WisetotoApi {
     /** 선수 프로필 + 월별·최근 5경기 기록. `c_position`에 따라 `record` 스키마가 갈린다. 서버 캐시 1시간. */
     @GET("extra/Player_Info/{seq}")
     suspend fun playerInfo(@Path("seq") playerId: Long): Envelope<PlayerInfoEnvelopeDto>
+
+    /** 앱 부트스트랩 — 강제 업데이트·차단 신호. 시작할 때 한 번만 부른다. */
+    @GET("extra/notice")
+    suspend fun notice(): Envelope<NoticeDto>
 }
 
 class WisetotoException(val code: String?, message: String?) : RuntimeException("[$code] $message")
@@ -351,7 +365,7 @@ fun <T> Envelope<T>.body(): T =
     if (code == "00" && data != null) data else throw WisetotoException(code, message)
 ```
 
-`data/remote/di/NetworkModule.kt` — OkHttp + Retrofit 3 + kotlinx.serialization. **`os=a&lang=kr` 쿼리가 없으면 모든 경로가 `01 잘못된 접근`** 이므로 인터셉터가 항상 붙입니다.
+`data/remote/di/NetworkModule.kt` — OkHttp + Retrofit 3 + kotlinx.serialization. **`os=a&version=4.1.3&lang=kr` 세 키 중 하나라도 없으면 모든 경로가 `01 잘못된 접근`** 이므로 인터셉터가 항상 붙입니다.
 
 ```kotlin
 package com.diamondscore.data.remote.di
@@ -365,6 +379,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Interceptor
 import retrofit2.Retrofit
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module @InstallIn(SingletonComponent::class)
@@ -382,6 +397,8 @@ object NetworkModule {
                 .header("User-Agent", "DiamondScore/0.1 (Android)")   // Python 기본 UA만 401, 나머지는 자유
                 .build())
         })
+        .callTimeout(10, TimeUnit.SECONDS)      // 폴링이 응답 없는 요청에 매달리지 않게 (계획서 §5.2)
+        .connectTimeout(5, TimeUnit.SECONDS)
         .build()
 
     @Provides @Singleton fun retrofit(client: OkHttpClient): Retrofit = Retrofit.Builder()
@@ -396,6 +413,10 @@ object NetworkModule {
 
 <div class="callout warn"><span class="t">첫 호출이 곧 <code>DS-001</code> — 응답 봉투의 <code>code</code>를 보라</span>
 이 <code>OkHttpClient</code>로 <code>live/Schedule_Day/{오늘}</code>이 실기기에서 <code>code:"00"</code>으로 오는지가 계획서 <code>DS-001</code>입니다. HTTP 상태는 거의 항상 200이라 판정 기준이 못 됩니다 — <code>Envelope.body()</code>가 던지는 <code>WisetotoException</code> 여부로 봅니다. 응답 <code>Content-Type</code>은 <code>text/html</code>이지만 kotlinx 컨버터는 헤더를 보지 않으므로 그대로 파싱됩니다. 인증·토큰·서명은 없습니다.
+</div>
+
+<div class="callout warn"><span class="t"><code>extra/notice</code>는 시작할 때 한 번 — 차단 신호를 무시하지 않는다</span>
+계획서 <code>DS-003</code>입니다. <code>update.next_action</code>·<code>server.next_action</code>은 평소 빈 문자열이고(2026-09-20 실측), 값이 채워지면 강제 업데이트 또는 차단 신호입니다. 앱 시작 시 한 번 불러 <strong>비어 있지 않으면 폴링을 멈추고 안내를 띄웁니다</strong>. 서비스가 게이팅을 시작해도 우회 수단을 만들지 않는 것이 이 앱의 방침입니다(개인용 범위).
 </div>
 
 <div class="callout tip"><span class="t">Hilt 모듈은 최상위 <code>di/</code>에 모으지 않는다</span>
@@ -448,10 +469,19 @@ fun statusLabel(status: GameStatus, state: String?, inning: String?): String = w
 /** 함정 2: "9" 같은 문자열 점수. 빈 문자열·null·비숫자는 null. */
 fun String?.toRuns(): Int? = this?.trim()?.toIntOrNull()
 
+/**
+ * 함정 7: 시작 시각은 timestamp 우선. Schedule_Month엔 timestamp가 없어 `game_date` 문자열을 파싱하는데,
+ * 형식이 어긋난 행 하나가 예외를 던지면 그 달 프리페치가 통째로 끊긴다 → 파싱 실패는 여기서 삼키고 null을 준다.
+ */
+private fun ScheduleGameDto.startInstant(): Instant? =
+    gameTimestamp?.let(Instant::ofEpochSecond)
+        ?: runCatching { LocalDateTime.parse(gameDate, apiDateTime).atZone(SEOUL).toInstant() }.getOrNull()
+
 /** 함정 8: 목록엔 WBC·시범경기·올스타전이 섞여 있다. 양 팀이 KBO 10구단이고 시즌 시작일 이후인 행만 KBO 정규 경기다. */
 fun ScheduleGameDto.isKboRegular(seasonStart: LocalDate?): Boolean {
     if (homeTeamSeq.toLongOrNull() !in KBO_TEAMS || awayTeamSeq.toLongOrNull() !in KBO_TEAMS) return false
-    return seasonStart == null || !toSummary().leagueDate.isBefore(seasonStart)   // 시범경기(3/12~3/24)는 여기서 빠진다
+    val date = startInstant()?.atZone(SEOUL)?.toLocalDate() ?: return false   // 시작 시각을 못 읽는 행은 여기서 버린다
+    return seasonStart == null || !date.isBefore(seasonStart)   // 시범경기(3/12~3/24)는 여기서 빠진다
 }
 
 fun teamRef(seq: String, name: String?): TeamRef {
@@ -487,6 +517,7 @@ internal fun buildSummary(
             hr > ar -> Winner.HOME; hr < ar -> Winner.AWAY; else -> Winner.DRAW   // 무승부는 동점 종료
         } else null,
         wentExtra = (inningNumber(inning) ?: 0) > 9,
+        finalInning = inningNumber(inning),
         venueShort = KBO_TEAMS[home.id]?.home,                      // 함정 6: 구장명은 앱 표에서
         homeStarter = homeStarter, awayStarter = awayStarter,
     )
@@ -494,8 +525,8 @@ internal fun buildSummary(
 
 fun ScheduleGameDto.toSummary(): GameSummary = buildSummary(
     id = seq.toLong(),
-    startsAt = gameTimestamp?.let(Instant::ofEpochSecond)          // 함정 7: 표시용 game_date보다 timestamp 우선
-        ?: LocalDateTime.parse(gameDate, apiDateTime).atZone(SEOUL).toInstant(),   // Schedule_Month엔 timestamp가 없다
+    startsAt = startInstant()                                      // 함정 7: 표시용 game_date보다 timestamp 우선
+        ?: error("시작 시각이 없는 행: seq=$seq"),                   // isKboRegular가 먼저 걸러 주므로 정상 경로엔 오지 않는다
     state = state, inning = inning,
     homeSeq = homeTeamSeq, homeName = homeTeamName, awaySeq = awayTeamSeq, awayName = awayTeamName,
     homeScore = homeScore.toRuns(), awayScore = awayScore.toRuns(),
@@ -646,7 +677,7 @@ fun PlayerInfoDto.toDetail(): PlayerDetail? {
 ```
 
 <div class="callout warn"><span class="t">합계 행을 월 합으로 만들거나 검증하지 말 것</span>
-<code>month:"13"</code> 행은 월별 행의 합이 <strong>아닙니다</strong>. 양의지의 월별 경기 수를 더하면 130인데 합계 행은 123이고, 곽빈의 월별 이닝 합은 159⅔인데 합계는 155입니다. 어느 쪽이 맞는지는 서버만 알고 있으므로 <strong>합계는 합계 행을 그대로 쓰고, 월별은 월별대로 그립니다.</strong> 앱에서 더해 만들면 화면마다 다른 숫자가 나옵니다.
+<code>month:"13"</code> 행은 월별 행의 합이 <strong>아닙니다</strong>. 양의지의 월별 경기 수를 더하면 130인데 합계 행은 123이고, 곽빈의 월별 이닝 합은 159⅔인데 합계는 155입니다(2026-09-18 실측 — 시즌 중이라 숫자 자체는 날마다 오릅니다. 변하지 않는 것은 <strong>둘이 다르다</strong>는 사실입니다). 어느 쪽이 맞는지는 서버만 알고 있으므로 <strong>합계는 합계 행을 그대로 쓰고, 월별은 월별대로 그립니다.</strong> 앱에서 더해 만들면 화면마다 다른 숫자가 나옵니다.
 </div>
 
 <div class="callout danger"><span class="t">함정 12개 — 이 파일이 막는 것</span>
@@ -675,11 +706,28 @@ mkdir -p app/src/test/resources/fixtures
 cp fixtures/*.json app/src/test/resources/fixtures/
 ```
 
-`app/src/test/java/.../MapperTest.kt` — 함정을 각각 검증합니다.
+`app/src/test/java/com/diamondscore/data/remote/mapper/MapperTest.kt` — 함정을 각각 검증합니다. `@Test`는 **`org.junit.Test`** 로 가져옵니다 — kotlin-test의 JVM 아티팩트에는 `Test` 애너테이션이 들어 있지 않고(테스트 프레임워크 variant 선택에 달려 있어 AGP 9 환경에서 보장되지 않습니다), Step 4의 `RepositoryTest`도 같은 방식입니다. Step 2에서 넣은 `testImplementation(libs.kotlin.test)`에서는 `assertEquals`·`assertFailsWith`·`assertIs` 같은 **단언 함수만** 개별 import 합니다(`import kotlin.test.*` 는 쓰지 않습니다).
 
 ```kotlin
+package com.diamondscore.data.remote.mapper
+
+import com.diamondscore.data.remote.*          // WisetotoException, Envelope.body()
+import com.diamondscore.data.remote.dto.*
+import com.diamondscore.domain.model.*
+import kotlinx.serialization.decodeFromString   // json.decodeFromString<T>(String)은 StringFormat 확장
+import kotlinx.serialization.json.Json
+import org.junit.Test                            // kotlin-test JVM 아티팩트에는 Test가 없다 — Step 4와 같게 JUnit4
+import java.time.LocalDate
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
 class MapperTest {
-    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; explicitNulls = false }
+    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true; explicitNulls = false }   // §3의 설정 그대로
     private fun load(name: String) = javaClass.classLoader!!.getResourceAsStream("fixtures/$name")!!.bufferedReader().readText()
     private fun day(name: String) = json.decodeFromString<Envelope<ScheduleDayDto>>(load(name)).body().games
     private fun game(name: String) = json.decodeFromString<Envelope<GameDetailEnvelopeDto>>(load(name)).body().detail!!
@@ -687,6 +735,7 @@ class MapperTest {
     @Test fun `문자열 점수를 숫자로`() {                                                  // 함정 2
         val g = day("schedule_day_finished.json").first().toSummary()
         assertEquals(GameStatus.FINAL, g.status); assertNotNull(g.homeRuns); assertNotNull(g.awayRuns)
+        assertNotNull(g.homeStarter)                                   // 경기일 목록에는 선발이 채워져 있다
     }
 
     @Test fun `취소 경기는 점수가 null`() {                                                // 함정 3
@@ -697,12 +746,14 @@ class MapperTest {
 
     @Test fun `예정 경기는 선발투수가 있고 점수는 null`() {
         val g = day("schedule_day_scheduled.json").first().toSummary()
-        assertEquals(GameStatus.SCHEDULED, g.status); assertNull(g.homeRuns); assertNotNull(g.homeStarter)
+        assertEquals(GameStatus.SCHEDULED, g.status); assertNull(g.homeRuns)
+        assertNotNull(g.homeStarter)   // 선발은 당일 목록에만 채워진다(미래 날짜 fixture면 이 줄을 지운다)
     }
 
     @Test fun `연장 11회가 라인스코어에 나온다`() {                                        // 함정 5
         val d = game("game_extra.json").toDetail()
         assertEquals(11, d.innings.size); assertTrue(d.summary.wentExtra)
+        assertEquals(11, d.summary.finalInning)                                              // "연장 11회" 표기용
         assertEquals(d.summary.homeRuns, d.innings.sumOf { it.home ?: 0 })                   // 이닝 합 = 총점
     }
 
@@ -714,9 +765,17 @@ class MapperTest {
     @Test fun `state 매핑과 이닝 라벨`() {                                                   // 함정 4
         assertEquals(GameStatus.LIVE, mapStatus("i"))
         assertEquals(GameStatus.UNKNOWN, mapStatus("zzz"))
+        assertEquals("1회초", inningLabel("bs1_1"))
         assertEquals("7회말", inningLabel("bs7_2"))
-        val live = day("schedule_day_live.json").first().toSummary()      // 09-15 18:31 캡처
-        assertEquals(GameStatus.LIVE, live.status); assertEquals("1회초", live.statusLabel); assertEquals(0, live.homeRuns)
+    }
+
+    /** 라이브 fixture는 경기일에만 받을 수 있는 선택 항목 — 없으면 이 테스트만 조용히 건너뛴다. */
+    @Test fun `진행 중 경기는 이닝 라벨이 그대로 상태가 된다`() {                            // 함정 4
+        javaClass.classLoader!!.getResource("fixtures/schedule_day_live.json") ?: return
+        val live = day("schedule_day_live.json").map { it.toSummary() }
+            .firstOrNull { it.status == GameStatus.LIVE } ?: return       // 캡처 시점에 진행 중 경기가 없었을 수 있다
+        assertTrue(Regex("""\d+회(초|말)""").matches(live.statusLabel))   // 몇 회인지는 캡처 시각에 달렸다
+        assertNotNull(live.homeRuns)                                      // 진행 중이면 0점이라도 값이 있다
     }
 
     @Test fun `3월 목록에서 WBC와 시범경기가 걸러진다`() {                                  // 함정 8
@@ -735,7 +794,8 @@ class MapperTest {
     }
 
     @Test fun `잘못된 접근 봉투는 예외`() {                                                // 함정 1
-        val env = json.decodeFromString<Envelope<ScheduleDayDto>>("""{"result":"success","code":"01","message":"잘못된 접근","data":[]}""")
+        // 오류 봉투의 data는 빈 객체 {} 다 — []로 쓰면 body() 전에 역직렬화가 먼저 터진다
+        val env = json.decodeFromString<Envelope<ScheduleDayDto>>("""{"result":"success","code":"01","message":"잘못된 접근","data":{}}""")
         assertFailsWith<WisetotoException> { env.body() }
     }
 
@@ -784,7 +844,8 @@ class MapperTest {
         val r = player("player_batter.json").record as PlayerRecord.Batting
         assertNull(r.months.last().month)                              // 합계는 항상 끝
         assertTrue(r.months.dropLast(1).all { it.month in 3..11 })      // 나머지는 실제 월
-        assertEquals(123, r.months.last().games)                       // 합계 행 그대로 — 월 합(130)이 아니다
+        assertNotNull(r.months.last().games)
+        assertNotEquals(r.months.dropLast(1).sumOf { it.games ?: 0 }, r.months.last().games)   // 합계 행 ≠ 월 합
     }
 
     @Test fun `이닝 표기 두 가지를 각각 해석한다`() {                                       // 함정 11
@@ -818,7 +879,7 @@ class MapperTest {
 ./gradlew :app:testDebugUnitTest
 ```
 
-<div class="checkpoint"><span class="t"></span> 테스트가 초록불이면 완료. 특히 <strong>연장 경기에서 10·11회 득점이 라인스코어에 나타나는지</strong>, <strong>취소 경기의 부분 점수가 사라지는지</strong>, <strong>투수/타자 record가 섞이지 않는지</strong>가 이 앱에서 가장 자주 깨지는 부분이니 반드시 통과시키세요. <code>load("…")</code>의 파일 이름은 Step 1에서 저장한 12개와 정확히 같아야 합니다.</div>
+<div class="checkpoint"><span class="t"></span> 테스트가 초록불이면 완료. 특히 <strong>연장 경기에서 10·11회 득점이 라인스코어에 나타나는지</strong>, <strong>취소 경기의 부분 점수가 사라지는지</strong>, <strong>투수/타자 record가 섞이지 않는지</strong>가 이 앱에서 가장 자주 깨지는 부분이니 반드시 통과시키세요. <code>load("…")</code>의 파일 이름은 Step 1에서 저장한 이름과 정확히 같아야 합니다 — 라이브 캡처(<code>schedule_day_live.json</code>)만 선택이라, 없으면 그 테스트 하나만 건너뜁니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-2">← Step 2</a>

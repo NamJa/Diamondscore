@@ -15,7 +15,7 @@
 설치가 끝나면 SDK 위치를 확인해 둡니다(보통 macOS `~/Library/Android/sdk`).
 
 <div class="callout tip"><span class="t">JDK</span>
-Android Studio에는 JDK가 내장(JBR 17+)돼 있어 따로 설치하지 않아도 됩니다. 이 프로젝트는 <strong>JDK 17 toolchain</strong>을 씁니다.
+Android Studio에는 JDK가 내장(JBR 17+)돼 있어 따로 설치하지 않아도 됩니다. 이 프로젝트는 <strong>Java 17</strong> 기준으로 빌드하며, 그 설정은 <a href="#/labs/step-2">Step 2</a>의 <code>app/build.gradle.kts</code>에서 합니다.
 </div>
 
 ## 2. 터미널에서 adb 잡기

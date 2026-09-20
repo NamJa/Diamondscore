@@ -20,7 +20,8 @@
 .markdown-section h2 {
   margin-top: 2.4rem; padding: .3rem 0 .4rem; border-bottom: 2px solid #eee;
 }
-.markdown-section h2::before {
+/* STEP 배지는 랩 페이지(상단 .chips 헤더가 있는 문서)에만 붙인다 — 홈·계획서의 h2에는 붙지 않는다 */
+.markdown-section:has(.chips) h2::before {
   content: "STEP"; display: inline-block; font-size: .62rem; font-weight: 700;
   color: #fff; background: var(--accent); padding: .12rem .5rem; border-radius: 999px;
   margin-right: .5rem; vertical-align: middle; letter-spacing: .05em;
