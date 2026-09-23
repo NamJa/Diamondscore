@@ -133,8 +133,13 @@ fun GameDetailScreen(key: GameDetailKey, onBack: () -> Unit) {
     LaunchedEffect(status) {                           // 종료 확정 — §4
         if (status == GameStatus.FINAL) {
             vm.refreshNow()                            // 최종 점수·R/H/E 확정(진입 직후라 init 조회가 도는 중이면 건너뛴다)
-            delay(10.minutes)                          // 투수 요약(end_summary)은 종료 7~8분 뒤에 채워진다
-            if (d?.winPitcher == null) vm.refreshNow() // 10분 뒤에도 비어 있을 때만 — 이미 끝난 경기를 열 때 헛조회하지 않는다
+            // 투수 요약(end_summary)은 종료 뒤 9~25분 사이에 채워진다(§4). 5분마다 확인해 비어 있을 때만 다시 받고, 여섯 번(30분)에서 멈춘다.
+            // 비었는지는 기다린 뒤에 본다 — 이미 끝난 경기는 첫 확인에서 멈춰 헛조회가 없다
+            repeat(6) {
+                delay(5.minutes)
+                if (d?.winPitcher != null) return@LaunchedEffect
+                vm.refreshNow()
+            }
         }
     }
     Scaffold(topBar = { DetailTopBar(onBack) }) { pad ->
@@ -252,9 +257,10 @@ fun DataNote() = Row(Modifier.padding(horizontal = 4.dp),
 
 ## 4. 종료 확정 처리
 
-`LIVE → FINAL`(`state: e`) 전환 시 최종 점수와 R/H/E는 상태와 함께 오지만, **승·패·세이브 투수(`end_summary`)는 7~8분 뒤에 채워집니다**(계획서 §2.4 실측 — 그 전엔 `null`). 전환 직후 한 번, 그리고 **10분 뒤에도** 투수 요약이 비어 있으면 한 번 더 조회합니다 — §3의 `LaunchedEffect(status)`가 그 코드입니다.
+`LIVE → FINAL`(`state: e`) 전환 시 최종 점수와 R/H/E는 상태와 함께 오지만, **승·패·세이브 투수(`end_summary`)는 몇 분에서 수십 분 늦게 채워집니다**(그 전엔 `null`). 2026-09-15엔 7~8분이었고, 2026-09-23 세 경기는 약 10분·9분·**24분**이었습니다(계획서 §2.4 — 경기마다 흔들립니다). 그래서 전환 직후 한 번 조회하고, 그 뒤 **5분마다** 투수 요약이 비었는지 보고 비어 있을 때만 다시 받다가 **여섯 번(30분)에서 멈춥니다** — §3의 `LaunchedEffect(status)`가 그 코드입니다. 그보다 늦으면 다음에 상세를 열 때 `init` 조회가 받아 옵니다.
 `status`가 키라서 `LIVE → FINAL`로 바뀔 때만 발화하고, 같은 블록이 없으면 승·패·세이브 투수 행은 영영 비어 있습니다.
-비었는지는 **10분을 기다린 뒤에** 봅니다. 이미 끝난 경기를 열면 Room의 `FINAL` 행이 먼저 방출되는데, 그때는 `init`의 상세 조회가 아직 끝나지 않아 투수 요약도 비어 보입니다 — 여기서 바로 판정하면 끝난 경기를 열 때마다 10분 뒤 헛조회가 한 번씩 나갑니다(2026-09-23 실측: 18:09:29 진입 → 18:19:29 같은 요청).
+"10분 뒤 한 번"으로 두지 않는 이유: 09-23처럼 요약이 10분을 넘겨 오는 날엔 그 한 번이 요약보다 먼저 나가 투수 행이 끝내 비게 됩니다(24분 걸린 경기는 5분 간격 네 번으로도 놓쳤습니다).
+비었는지는 **기다린 뒤에** 봅니다. 이미 끝난 경기를 열면 Room의 `FINAL` 행이 먼저 방출되는데, 그때는 `init`의 상세 조회가 아직 끝나지 않아 투수 요약도 비어 보입니다 — 여기서 바로 판정하면 끝난 경기를 열 때마다 헛조회가 한 번씩 나갑니다(2026-09-23 실측: 18:09:29 진입 → 18:19:29 같은 요청). 5분을 기다린 뒤엔 `init` 조회가 끝나 있으므로 첫 확인에서 멈춥니다.
 
 `InfoTable`은 `null` 행을 숨기므로(§3) 투수 요약이 늦게 와도 화면이 깨지지 않고 행이 나중에 나타납니다.
 
@@ -288,7 +294,7 @@ Step 6에서 `core/ui`에 만든(`core/ui/LivePolling.kt`, package `com.diamonds
 | API | 이 Step에서의 사용 목적 |
 |---|---|
 | `LivePolling(…)` 안의 `LaunchedEffect` | `LIVE`(또는 시작 시각이 지난 예정)일 때만 15초 폴링, `FINAL`이 되면 키가 바뀌어 루프가 끝난다 |
-| `LaunchedEffect(status)` | 상태가 `FINAL`로 바뀐 순간 1회 재조회하고, `delay(10.minutes)` 뒤 투수 요약(`end_summary`)이 비어 있을 때만 한 번 더 조회한다. 화면을 떠나면 코루틴이 취소된다 |
+| `LaunchedEffect(status)` | 상태가 `FINAL`로 바뀐 순간 1회 재조회하고, `delay(5.minutes)`마다 투수 요약(`end_summary`)이 비어 있을 때만 다시 조회한다(최대 6회 = 30분, 채워지면 `return@LaunchedEffect`). 화면을 떠나면 코루틴이 취소된다 |
 
 **레이아웃·컴포넌트**
 

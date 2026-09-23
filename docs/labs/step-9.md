@@ -579,7 +579,7 @@ BoxWithConstraints {
 ```kotlin
 package com.diamondscore
 
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule   // Compose 1.12부터 v2 — 구 패키지는 deprecated
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.diamondscore.core.designsystem.DiamondScoreTheme
@@ -603,7 +603,7 @@ class SettingsUiTest {
 ```
 
 <div class="callout warn"><span class="t">espresso-core 3.7.0이 빠지면 이 테스트가 깨진다</span>
-Compose UI 테스트는 내부에서 Espresso로 기기가 쉬는지 기다립니다. <code>ui-test-junit4</code>가 끌어오는 espresso-core 3.5.0은 API 34+ 기기에서 <code>NoSuchMethodException: android.hardware.input.InputManager.getInstance</code>로 실패하므로, Step 2 §4의 <code>androidTestImplementation(libs.espresso.core)</code>(3.7.0)가 있어야 통과합니다(2026-09-23 API 37 에뮬레이터 실측: 없으면 실패, 넣으면 2/2 통과). Compose 1.12에서 <code>createComposeRule()</code>은 deprecated 경고가 나오지만(<code>junit4.v2</code> 패키지로 이전 권고) 그대로 동작합니다.
+Compose UI 테스트는 내부에서 Espresso로 기기가 쉬는지 기다립니다. <code>ui-test-junit4</code>가 끌어오는 espresso-core 3.5.0은 API 34+ 기기에서 <code>NoSuchMethodException: android.hardware.input.InputManager.getInstance</code>로 실패하므로, Step 2 §4의 <code>androidTestImplementation(libs.espresso.core)</code>(3.7.0)가 있어야 통과합니다(2026-09-23 API 37 에뮬레이터 실측: 없으면 실패, 넣으면 2/2 통과). <code>createComposeRule</code>은 Compose 1.12부터 <code>junit4.v2</code> 패키지 것을 씁니다 — 구 패키지(<code>junit4.createComposeRule</code>)는 deprecated 경고를 내고, v2는 효과 코루틴을 바로 실행하지 않고 줄 세웁니다(<code>StandardTestDispatcher</code>). 이 테스트는 클릭 콜백만 보므로 v2로 그대로 통과합니다(같은 날 실측).
 </div>
 
 <div class="callout warn"><span class="t">Hilt 계측 테스트는 범위 밖</span>
@@ -712,7 +712,7 @@ R8이 kotlinx.serialization DTO를 지우면 릴리스에서만 파싱 크래시
 
 | API | 이 Step에서의 사용 목적 |
 |---|---|
-| `createComposeRule()` | 액티비티 없이 컴포저블 하나를 띄우는 테스트 룰 |
+| `createComposeRule()` (`junit4.v2`) | 액티비티 없이 컴포저블 하나를 띄우는 테스트 룰. Compose 1.12부터는 v2 패키지 것을 쓴다(구 패키지는 deprecated) |
 | `compose.setContent { … }` | 테스트 대상 `DsSegmented`를 테마와 함께 그린다 |
 | `onNodeWithText("1분")` / `performClick()` | 텍스트로 노드를 찾아 클릭하고, 콜백으로 선택값이 바뀌는지 검증한다 |
 
