@@ -39,6 +39,7 @@ class GamesViewModel @Inject constructor(
         savedState.get<String>(KEY_DATE)?.let(LocalDate::parse) ?: LocalDate.now(SEOUL))
     private val sync = MutableStateFlow(Sync())
 
+    @OptIn(ExperimentalCoroutinesApi::class)                      // flatMapLatest — 없으면 opt-in 경고
     val ui: StateFlow<GamesUiState> = combine(
         date.flatMapLatest { d -> repo.observeByDate(d).map { d to it } },
         sync,
@@ -108,9 +109,9 @@ fun DateBar(date: LocalDate, onPrev: () -> Unit, onNext: () -> Unit, onToday: ()
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            IconButton(onClick = onPrev) { DsIcon(Icons.Outlined.ChevronLeft) }
+            IconButton(onClick = onPrev) { DsIcon(Icons.Outlined.ChevronLeft, contentDescription = "이전 날짜") }
             Text(date.format(dateFmt), style = MaterialTheme.typography.titleMedium)  // 8월 2일 토
-            IconButton(onClick = onNext) { DsIcon(Icons.Outlined.ChevronRight) }
+            IconButton(onClick = onNext) { DsIcon(Icons.Outlined.ChevronRight, contentDescription = "다음 날짜") }
         }
         if (!isToday) TextButton(onClick = onToday) { Text("오늘", color = DsColors.live) }
     }
@@ -133,13 +134,16 @@ fun GamesScreen(
     val ui by vm.ui.collectAsStateWithLifecycle()
     // 오늘이면 진입 시 1회 — 프리페치된 일정 위에 최신 상태(취소·선발 변경)를 덮는다
     LaunchedEffect(ui.date) { if (ui.date == LocalDate.now(SEOUL)) vm.refreshNow() }
+    // 시작 시각이 지난 예정 경기도 폴링한다 — LIVE만 보면 경기 전에 열어 둔 목록은 "예정"에 머문다(§4)
+    val now = rememberMinuteClock()
+    val pollable = ui.games.any { it.status == GameStatus.LIVE || (it.status == GameStatus.SCHEDULED && !it.startsAt.isAfter(now)) }
     LivePolling(                                        // §4 — Step 9에서 간격을 설정값으로 바꿔 끼운다
-        hasLive = ui.games.any { it.status == GameStatus.LIVE },
+        hasLive = pollable,
         onTick = { vm.refreshNow() },
     )
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         TopBar("경기", trailing = {                      // 목업 헤더 우측: 설정 톱니
-            IconButton(onClick = onSettings) { DsIcon(Icons.Outlined.Settings, size = 22.dp) }
+            IconButton(onClick = onSettings) { DsIcon(Icons.Outlined.Settings, contentDescription = "설정", size = 22.dp) }
         })
         DateBar(ui.date, onPrev = { vm.move(-1) }, onNext = { vm.move(1) }, onToday = vm::today)
         // 껐다 켠 직후엔 성공 시각이 없다 → 그래도 캐시를 보고 있다는 사실은 알려준다
@@ -194,9 +198,11 @@ package com.diamondscore.core.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import java.time.Instant
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 
@@ -213,11 +219,20 @@ fun LivePolling(hasLive: Boolean, intervalMs: Long = 20_000L, onTick: suspend ()
         }
     }
 }
+
+/** 1분마다 바뀌는 현재 시각 — "시작 시각이 지난 예정 경기"도 폴링 대상으로 보려고 목록·상세가 쓴다. */
+@Composable
+fun rememberMinuteClock(): Instant =
+    produceState(Instant.now()) { while (true) { delay(60_000); value = Instant.now() } }.value
 ```
 
 `vm`이 아니라 `onTick`을 받는 이유는 Step 9에서 설정값(20초/30초/1분)을 `intervalMs`로 내려보내기 위해서입니다.
-§3의 `GamesScreen`에서는 `import com.diamondscore.core.ui.LivePolling`이 필요합니다.
+§3의 `GamesScreen`에서는 `import com.diamondscore.core.ui.LivePolling`·`rememberMinuteClock`이 필요합니다.
 목록 응답에는 이닝별 득점이 없으므로 상세 화면은 따로 폴링합니다(Step 7).
+
+<div class="callout warn"><span class="t">LIVE만 조건으로 두면 경기 전에 열어 둔 목록은 영영 "예정"이다</span>
+폴링은 Room에 이미 LIVE 행이 있을 때만 돌고, 진입 시 갱신(<code>LaunchedEffect(ui.date)</code>)은 한 번뿐입니다. 그래서 18:21에 연 목록은 18:38에 서버가 이미 3경기 모두 <code>state:"i"</code>였는데도 요청 0건으로 "예정"에 머물렀고, 홈에 나갔다 돌아와도 그대로였습니다(2026-09-23 실측 — 날짜를 바꿨다 돌아와야 LIVE가 떴습니다). §3처럼 <strong>시작 시각이 지난 예정 경기</strong>도 폴링 대상에 넣고, 그 시각이 지나는 순간을 알려고 1분마다 바뀌는 <code>rememberMinuteClock()</code>을 씁니다. 우천 지연처럼 시작이 늦어져도 LIVE·취소가 될 때까지 폴링이 이어집니다. 폴링 자체는 여전히 <code>LivePolling</code>이 <code>STARTED</code>에서만 돌립니다.
+</div>
 
 <div class="callout tip"><span class="t">여기까지가 튜토리얼 범위</span>
 계획서 §7.2의 <code>LivePoller</code>는 <strong>적응형 간격</strong>(라이브가 뜸하면 1.5배, 최대 40초)과 <strong>실패 시 backoff</strong>(2배, 최대 2분)까지 가집니다. 이 랩은 그중 <strong>요청 1개 · 20초 · jitter · <code>STARTED</code>에서만</strong>(계획서 §10의 차단 완화책 4종)과 single-flight(<code>refreshNow</code>의 <code>busy</code> 가드)만 구현합니다. 나머지 둘은 별도 클래스가 필요해 범위 밖입니다.
@@ -241,7 +256,8 @@ games = games.sortedByDescending { it.home.id in favs || it.away.id in favs },
 ## 6. 실행 확인
 
 `Scaffold`·`NavDisplay`는 Step 9에서 붙입니다. 그때까지는 `MainActivity`에 이 화면 하나만 임시로
-연결해 두고 Step 7·8도 같은 자리에서 바꿔 끼우며 확인합니다(완전한 코드).
+연결해 두고 Step 7·8도 같은 자리에서 바꿔 끼우며 확인합니다(완전한 코드). 임시 화면이라 상태바 inset을 처리하지 않으므로
+제목(`경기.`)이 상태바 바로 밑에 붙어 보이는 건 정상입니다 — Step 9의 `Scaffold`가 inset을 줍니다.
 
 ```kotlin
 package com.diamondscore
@@ -266,7 +282,7 @@ class MainActivity : ComponentActivity() {
 }
 ```
 
-<div class="checkpoint"><span class="t"></span> 홈 화면(진행 중·예정·종료·연기 섹션, 원정 먼저, 라이브 빨강)이 뜨고, 날짜 화살표로 과거/미래가 즉시(네트워크 없이) 바뀌면 성공. 비행기 모드는 두 경우를 나눠 보세요 — 앱을 <strong>켜 둔 채</strong> 비행기 모드로 바꾸면 캐시 위에 "마지막 갱신 n분 전" 배너가, 앱을 <strong>껐다 켠 뒤</strong> 비행기 모드로 들어가면 <code>lastOk</code>가 프로세스 메모리에만 있어 사라지므로 같은 자리에 "캐시 표시 중"이 떠야 합니다(§1 warn 콜아웃). 캐시가 없는 날이면 둘 다 "다시 시도"입니다. 경기일이면 30분 켜두고 자동 갱신 + 홈 복귀 시 폴링 정지/재개를 확인하세요.</div>
+<div class="checkpoint"><span class="t"></span> 홈 화면(진행 중·예정·종료·연기 섹션, 원정 먼저, 라이브 빨강)이 뜨고, 날짜 화살표로 과거/미래가 즉시(네트워크 없이) 바뀌면 성공. 비행기 모드는 두 경우를 나눠 보세요 — 앱을 <strong>켜 둔 채</strong> 비행기 모드로 바꾸면 <strong>갱신 시도가 있을 때</strong> 캐시 위에 "마지막 갱신 n분 전" 배너가 뜹니다. 라이브 경기가 없으면 폴링이 없어 바꾸기만 해서는 30초가 지나도 배너가 안 뜨므로(2026-09-23 실측), ‹로 전날에 갔다가 "오늘"을 눌러 갱신을 일으킵니다(라이브 폴링 중이면 20초 안에 뜹니다). 앱을 <strong>껐다 켠 뒤</strong> 비행기 모드로 들어가면 <code>lastOk</code>가 프로세스 메모리에만 있어 사라지므로 같은 자리에 "캐시 표시 중"이 떠야 합니다(§1 warn 콜아웃). 캐시가 없는 날이면 둘 다 "다시 시도"입니다. 경기일이면 <strong>첫 경기 시작 전에</strong> 열어 두고 시작 시각이 지나면 스스로 LIVE로 바뀌는지, 30분 동안 자동 갱신되는지(목록 폴링 간격 18~22초), 홈 복귀 시 폴링이 멈췄다 돌아오면 즉시 재개되는지 확인하세요.</div>
 
 <div class="pager">
 <a href="#/labs/step-5">← Step 5</a>

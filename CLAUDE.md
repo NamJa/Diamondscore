@@ -29,6 +29,7 @@ Gradle commands the labs instruct the reader to run, once an `app/` project exis
 ./gradlew :app:testDebugUnitTest                  # unit tests (mappers, LivePoller)
 ./gradlew :app:connectedDebugAndroidTest          # Compose UI tests on device
 ./gradlew :app:assembleRelease                    # R8 full mode; verify serialization DTOs survive
+./gradlew :app:installRelease                     # release is debug-key signed in the labs, so it installs
 ```
 
 ## Editing the docs
@@ -38,14 +39,14 @@ Gradle commands the labs instruct the reader to run, once an `app/` project exis
 - Labs use HTML blocks styled by `docs/assets/codelab.css`: `<div class="chips">` header, `<div class="callout tip|warn|danger|ok">`, `<div class="checkpoint">`, `<div class="pager">` footer. Match the existing pattern.
 - `docs/_sidebar.md` is the nav; `docs/index.html` holds the docsify config and a progress plugin keyed on `/labs/step-N` paths. `.nojekyll` must stay.
 - Plan work items are tracked inline as `DS-nnn` IDs (e.g. `DS-001` = the app's first `Schedule_Day` call returns `code "00"` on a real device). `DS-002a/b` (live start/finish schema) are done as of 2026-09-15. Reference existing IDs rather than inventing new tracking.
-- Consistency invariants that break silently: the canonical trap list (plan §3.4) is **12 items** — ①–⑧ games/rank (observed 2026-09-14/15), ⑨–⑫ teams/players (observed 2026-09-18) — and the count is repeated in Step 3 (chips, intro, danger callout), `docs/README.md` (intro, Step 3 card) and plan §3.4/§8/§9 — add a trap in all of them; Step 1's fixture filenames must match the `load(...)` names in Step 3's `MapperTest`; plan section cross-references (`§3.4-N`, `§4.2`) shift when the trap list is renumbered — grep them after any renumbering.
-- The plan describes the data source as observed on 2026-09-14/15 (games, rank) and 2026-09-18 (teams, players). Re-verify against the live API before "correcting" a documented quirk — several counter-intuitive facts (three mandatory query keys, WBC rows in `Schedule_Month`, `end_summary` arriving minutes after the final) were confirmed by scripted checks, not assumed.
+- Consistency invariants that break silently: the canonical trap list (plan §3.4) is **12 items** — ①–⑧ games/rank (observed 2026-09-14/15), ⑨–⑫ teams/players (observed 2026-09-18) — and the count is repeated in Step 3 (chips, intro, danger callout), `docs/README.md` (intro, Step 3 card) and plan §3.4/§8/§9 — add a trap in all of them; Step 1's fixture filenames must match the `load(...)` names in Step 3's `MapperTest` and the `fixture(...)` names in Step 4's `RepositoryTest` (which uses `schedule_month.json`); plan section cross-references (`§3.4-N`, `§4.2`) shift when the trap list is renumbered — grep them after any renumbering.
+- The plan describes the data source as observed on 2026-09-14/15 (games, rank) and 2026-09-18 (teams, players). The Codelabs were built and run end to end on 2026-09-23 (Android Studio 2026.1 / AGP 9.4.0 template, API 37 emulator, a live game day); the fixes from that run are in the labs. Re-verify against the live API before "correcting" a documented quirk — several counter-intuitive facts (three mandatory query keys, WBC rows in `Schedule_Month`, `end_summary` arriving minutes after the final) were confirmed by scripted checks, not assumed.
 
 ## Architecture (as specified in the plan and labs)
 
 Single `:app` module with package boundaries that map 1:1 to a future module split (plan §5.1 / §5.5). Four rules that must hold in any code you write into the labs:
 
-1. `feature`, `core/ui`, `core/designsystem` never reference `data`. ViewModels inject Repositories only.
+1. `feature`, `core/ui`, `core/designsystem` never reference `data` internals (`WisetotoApi`, DAOs, DTOs, Entities). ViewModels inject Repositories only — `data/repository` is the one allowed edge.
 2. DTOs and Room Entities never leave `data`. Only `domain/model` types cross boundaries.
 3. `core/designsystem` knows no domain (domain-aware shared composables go in `core/ui`).
 4. `data` knows no Compose (so Korean team names live in `core/common`, team colors in `core/designsystem`).
@@ -54,13 +55,17 @@ Screens don't know each other; navigation is a `(Long) -> Unit` callback that `D
 
 Data flow: Compose → ViewModel → Repository → Room (read SSOT, ViewModels only ever collect DAO `Flow`s) ← `WisetotoApi` (Retrofit). Detail writes upsert `GameEntity` + `InningRunEntity` in one transaction; there is no server delta field, so writes are skipped when the new row equals the stored row (`data class` equality — never add timestamps to entities).
 
-Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (20s); detail polls `/live/schedule/{seq}` at 15s only while `LIVE` (the list has no per-inning runs). Season prefetch is `GET /live/Schedule_Month/{yyyyMM}` for months 3–11. `LivePoller` runs under `repeatOnLifecycle(STARTED)` with single-flight, adaptive interval, jitter, and backoff. WorkManager is for prefetch only, never live polling.
+Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (20s); detail polls `/live/schedule/{seq}` at 15s only while `LIVE` (the list has no per-inning runs). Both also poll a `SCHEDULED` game once its start time has passed (a one-minute clock, `rememberMinuteClock`) — polling only on `LIVE` leaves a screen opened before first pitch stuck on "예정" (observed 2026-09-23). Season prefetch is `GET /live/Schedule_Month/{yyyyMM}` for months 3–11. `LivePoller` runs under `repeatOnLifecycle(STARTED)` with single-flight, adaptive interval, jitter, and backoff. WorkManager is for prefetch only, never live polling.
 
 ## Stack constraints (non-obvious, easy to break)
 
 - AGP 9 has Kotlin built in: do **not** apply `org.jetbrains.kotlin.android`; compiler options go in top-level `kotlin { compilerOptions { } }`. Kotlin 2.4 is forced via root `buildscript` classpath.
 - KSP2 only (Room, Hilt), no kapt. KSP uses standalone versioning since 2.3.0 (`2.3.11`, not `2.4.x-2.0.0`); Hilt must be ≥ 2.60 to match.
-- Navigation 3 (`NavDisplay` + typed `NavKey`), never `navigation-compose`.
+- Navigation 3 (`NavDisplay` + typed `NavKey`), never `navigation-compose`. In 1.1.x `NavDisplay(entries = …)` takes `sceneStrategies = listOf(…)`; the singular `sceneStrategy` overload is hidden and does not compile.
+- `compileSdk` is 37 because the catalog's libraries require it (`checkDebugAarMetadata` fails on 36); `targetSdk` stays 36.
+- `DiamondScoreTheme` must provide `LocalContentColor` — M3 `MaterialTheme` doesn't, and screens before Step 9 have no `Surface`/`Scaffold`, so uncolored text renders black on the dark background.
+- androidTest needs `espresso-core` 3.7.0 declared explicitly; Compose `ui-test-junit4` pulls 3.5.0, which fails on API 34+ (`NoSuchMethodException: InputManager.getInstance`).
+- The release build type carries `signingConfig = signingConfigs.getByName("debug")` (personal use); without it the APK is unsigned and cannot be installed.
 - kotlinx.serialization `Json` must have `ignoreUnknownKeys = true` and `explicitNulls = false`; wisetoto responses carry cache noise fields and `null` for unplayed innings. Every response is an `Envelope<T>` — HTTP is 200 even on failure; success is `code == "00"` (`Envelope.body()` throws otherwise).
 
 ## wisetoto data traps (plan §3.4 is canonical and numbered — mapping these naively is a bug)
@@ -73,7 +78,7 @@ Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (2
 - `inning` code `bs{N}_{1|2}` = N회 초/말; labels come from parsing it, never invented.
 - On `i → e` the final score, R/H/E and `livecomment.comment_type == "fin"` arrive together, but `end_summary` (win/loss/save pitchers) and the list row's `detail.win_pitcher` fill **~7–8 minutes later**. Refetch once at the flip and once ~10 min later; never keep the 15s poll running on a `FINAL` game.
 - Stadium names are not normalized (23 spellings); cards use the home city from `KBO_TEAMS`, only the detail shows `stadium_name` verbatim.
-- `game_date` is a display string; use `game_timestamp` (epoch seconds) and convert to `Asia/Seoul`. `Schedule_Month` rows lack the timestamp — parse `yyyy-MM-dd HH:mm:ss` as Seoul.
+- `game_date` is a display string; use `game_timestamp` (epoch seconds) and convert to `Asia/Seoul`. `Schedule_Month` rows lack the timestamp, the starters **and `inning`** (observed 2026-09-23) — parse `yyyy-MM-dd HH:mm:ss` as Seoul, and when merging a Month row keep the stored starters and inning-derived fields (`finalInning`, `wentExtra`, live label), or the daily prefetch turns "연장 11회" back into "종료".
 - Team IDs are wisetoto `team_info_seq` (315 SSG, 316 두산, 317 롯데, 318 삼성, 319 한화, 320 KIA, 321 키움, 322 LG, 2107 NC, 2674 KT). Season = year; there is no season ID. `schedule_info_seq` is a global cross-sport counter — never compute it, always take it from a list response.
 - A roster needs **two** `Team_Info` calls (`player_position` 0 = pitchers, anything else = batters); list rows carry no position, and `c_number` is a string that **repeats inside one team** (두산 has two #48 pitchers) — the list key is `player_info_seq`, never the number. `team_history` entries are split by a lowercase `l`, not a pipe; photo URLs come as `http://` and must be promoted to `https`.
 - `Player_Info`'s `record` schema splits on `c_position` (pitcher vs batter; the same key can differ — `h` is hits allowed vs hits), so the domain splits it with a `sealed interface`. `month "13"` is the season total, and it does **not** equal the sum of the monthly rows — use the total row as sent. Innings come in two notations (`"29 2/3"` mixed fraction in monthly rows, `ip "0.2"` = ⅔ inning in `previous5`), `previous5`'s `era`/`avg` are running season totals rather than that game's, and rows with every field `null` are mixed in. `player_detail` has no team field — the caller passes the team in.
@@ -81,7 +86,7 @@ Live updates: one `GET /live/Schedule_Day/{yyyyMMdd}` refreshes the whole day (2
 
 ## wisetoto access notes
 
-curl, OkHttp and browsers all get 200; only a `Python-urllib` User-Agent gets 401. `/extra/notice` carries the app's forced-update signal (`update.next_action`) — check it at startup. The service ToS forbids commercial reuse without consent; keep the app personal-use and poll no faster than the official app (list every 4s; we use 20s). Do not add auth-bypass workarounds if the API starts gating; the plan says circuit-open.
+curl, OkHttp and browsers all get 200; only a `Python-urllib` User-Agent gets 401. `/extra/notice` carries the app's forced-update signal (`update.next_action`) — check it at startup (the Codelabs define the API and DTO but never call it; `DS-003` is open). The service ToS forbids commercial reuse without consent; keep the app personal-use and poll no faster than the official app (list every 4s; we use 20s). Do not add auth-bypass workarounds if the API starts gating; the plan says circuit-open.
 
 ## Route source of truth
 

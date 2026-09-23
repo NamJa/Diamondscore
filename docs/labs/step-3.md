@@ -85,7 +85,7 @@ data class RosterPlayer(
 
 data class TeamHistoryEntry(val year: Int?, val text: String)   // "1982년 l …" 를 쪼갠 것
 
-/** 팀 상세(Step 8-2)와 팀 정보·선수단(Step 8-3)이 같이 쓴다 — 요청을 두 번 하지 않으려고 한 모델이다. */
+/** 팀 상세(Step 8-2)와 팀 정보·선수단(Step 8-3)이 같이 쓰는 한 모델. 화면마다 따로 수집하므로 Team_Info 요청은 화면마다 나간다. */
 data class TeamDetail(
     val team: TeamRef,
     val nameEn: String?,                 // "Doosan Bears"
@@ -166,7 +166,7 @@ import kotlinx.serialization.Serializable
     @SerialName("game_timestamp") val gameTimestamp: Long? = null,     // Schedule_Day에만 있음
     @SerialName("game_date") val gameDate: String? = null,             // "2026-09-13 17:00:00" (둘 다 있음)
     val state: String? = null,                                         // a / i / e / c
-    val inning: String? = null,                                        // "bs9_1" = 9회초
+    val inning: String? = null,                                        // "bs9_1" = 9회초 — Schedule_Day에만 (Month엔 없다)
     @SerialName("stadium_name") val stadiumName: String? = null,
     @SerialName("home_team_info_seq") val homeTeamSeq: String,
     @SerialName("home_team_name") val homeTeamName: String? = null,
@@ -412,11 +412,11 @@ object NetworkModule {
 ```
 
 <div class="callout warn"><span class="t">첫 호출이 곧 <code>DS-001</code> — 응답 봉투의 <code>code</code>를 보라</span>
-이 <code>OkHttpClient</code>로 <code>live/Schedule_Day/{오늘}</code>이 실기기에서 <code>code:"00"</code>으로 오는지가 계획서 <code>DS-001</code>입니다. HTTP 상태는 거의 항상 200이라 판정 기준이 못 됩니다 — <code>Envelope.body()</code>가 던지는 <code>WisetotoException</code> 여부로 봅니다. 응답 <code>Content-Type</code>은 <code>text/html</code>이지만 kotlinx 컨버터는 헤더를 보지 않으므로 그대로 파싱됩니다. 인증·토큰·서명은 없습니다.
+이 <code>OkHttpClient</code>로 <code>live/Schedule_Day/{오늘}</code>이 실기기에서 <code>code:"00"</code>으로 오는지가 계획서 <code>DS-001</code>입니다. 다만 Step 3까지의 앱은 아직 API를 부르지 않습니다 — 기기에서 이 클라이언트가 처음 쓰이는 곳은 <strong>Step 4의 프리페치 워커</strong>이고, 워커는 <code>Schedule_Day</code>·<code>Schedule_Month</code>가 전부 <code>"00"</code>일 때만 <code>SUCCESS</code>로 끝나므로 Step 4 체크포인트의 logcat이 곧 판정입니다. HTTP 상태는 거의 항상 200이라 판정 기준이 못 됩니다 — <code>Envelope.body()</code>가 던지는 <code>WisetotoException</code> 여부로 봅니다. 응답 <code>Content-Type</code>은 <code>text/html</code>이지만 kotlinx 컨버터는 헤더를 보지 않으므로 그대로 파싱됩니다. 인증·토큰·서명은 없습니다.
 </div>
 
 <div class="callout warn"><span class="t"><code>extra/notice</code>는 시작할 때 한 번 — 차단 신호를 무시하지 않는다</span>
-계획서 <code>DS-003</code>입니다. <code>update.next_action</code>·<code>server.next_action</code>은 평소 빈 문자열이고(2026-09-20 실측), 값이 채워지면 강제 업데이트 또는 차단 신호입니다. 앱 시작 시 한 번 불러 <strong>비어 있지 않으면 폴링을 멈추고 안내를 띄웁니다</strong>. 서비스가 게이팅을 시작해도 우회 수단을 만들지 않는 것이 이 앱의 방침입니다(개인용 범위).
+계획서 <code>DS-003</code>입니다. <code>update.next_action</code>·<code>server.next_action</code>은 평소 빈 문자열이고(2026-09-20·09-23 실측), 값이 채워지면 강제 업데이트 또는 차단 신호입니다. 원칙은 앱 시작 시 한 번 불러 <strong>비어 있지 않으면 폴링을 멈추고 안내를 띄우는 것</strong>입니다. <strong>이 튜토리얼은 위 API·DTO까지만 준비하고 시작 시 확인은 구현하지 않습니다</strong> — Step 4~9 어디에서도 <code>notice()</code>를 부르지 않으며, <code>DS-003</code>은 미완료로 남아 있습니다. 서비스가 게이팅을 시작해도 우회 수단을 만들지 않는 것이 이 앱의 방침입니다(개인용 범위).
 </div>
 
 <div class="callout tip"><span class="t">Hilt 모듈은 최상위 <code>di/</code>에 모으지 않는다</span>
@@ -688,7 +688,7 @@ fun PlayerInfoDto.toDetail(): PlayerDetail? {
 ④ <code>game_result</code>가 진행 중엔 이닝 라벨·종료 후엔 w/l/d라 승패는 총점 비교로(<code>buildSummary</code>)
 ⑤ 라인스코어 15칸 고정, <code>null</code>과 <code>0</code> 구분(<code>parseInnings</code>)
 ⑥ 구장명 표기 비정규 — 같은 달 안에서도 흔들림(앱 표 사용)
-⑦ <code>game_date</code>는 표시 문자열, 변경 감지 필드 없음(<code>game_timestamp</code> 사용, 쓰기 스킵은 Step 4)
+⑦ <code>game_date</code>는 표시 문자열, 변경 감지 필드 없음(<code>game_timestamp</code> 사용, 쓰기 스킵은 Step 4) — <code>Schedule_Month</code> 행엔 <code>game_timestamp</code>·선발·<code>inning</code>이 없음(이닝 파생값 보존은 Step 4)
 ⑧ 목록에 WBC·시범경기·올스타전이 섞여 있음(<code>isKboRegular</code>)
 <br><strong>팀·선수</strong>
 ⑨ 선수단은 <code>player_position</code>으로 <strong>두 번</strong> 불러야 하고, 목록에 포지션이 없고, <strong>등번호가 겹치며</strong>(키는 <code>seq</code>), 연혁 구분자가 소문자 <code>l</code>이고, 사진이 <code>http://</code>다(<code>toRoster</code>·<code>toHistoryEntry</code>·<code>toHttps</code>)
@@ -699,14 +699,14 @@ fun PlayerInfoDto.toDetail(): PlayerDetail? {
 
 ## 5. fixture 옮기고 매퍼 테스트
 
-Step 1에서 받은 JSON을 테스트 리소스로 옮깁니다.
+Step 1에서 받은 JSON을 테스트 리소스로 옮깁니다. 프로젝트 루트에서 실행합니다 — Step 1은 `fixtures/`를 프로젝트 폴더 옆에 만들었습니다(다른 곳에 받았다면 `../fixtures`를 그 경로로 바꿉니다).
 
 ```bash
 mkdir -p app/src/test/resources/fixtures
-cp fixtures/*.json app/src/test/resources/fixtures/
+cp ../fixtures/*.json app/src/test/resources/fixtures/
 ```
 
-`app/src/test/java/com/diamondscore/data/remote/mapper/MapperTest.kt` — 함정을 각각 검증합니다. `@Test`는 **`org.junit.Test`** 로 가져옵니다 — kotlin-test의 JVM 아티팩트에는 `Test` 애너테이션이 들어 있지 않고(테스트 프레임워크 variant 선택에 달려 있어 AGP 9 환경에서 보장되지 않습니다), Step 4의 `RepositoryTest`도 같은 방식입니다. Step 2에서 넣은 `testImplementation(libs.kotlin.test)`에서는 `assertEquals`·`assertFailsWith`·`assertIs` 같은 **단언 함수만** 개별 import 합니다(`import kotlin.test.*` 는 쓰지 않습니다).
+`app/src/test/java/com/diamondscore/data/remote/mapper/MapperTest.kt` — 함정을 각각 검증합니다. `@Test`는 **`org.junit.Test`** 로 가져옵니다 — kotlin-test의 JVM 아티팩트에는 `Test` 애너테이션이 들어 있지 않고(테스트 프레임워크 variant 선택에 달려 있어 AGP 9 환경에서 보장되지 않습니다), Step 4의 `RepositoryTest`도 같은 방식입니다. Step 2에서 넣은 `testImplementation(libs.kotlin.test)`에서는 `assertEquals`·`assertFailsWith`·`assertIs` 같은 **단언 함수만** 개별 import 합니다(`import kotlin.test.*` 는 쓰지 않습니다). fixture가 없어 돌릴 수 없는 테스트는 `return`으로 빠지지 말고 JUnit4의 `assumeTrue`로 건너뜁니다 — `return`은 결과에 **통과**로 찍혀 검증된 것처럼 보이고, `assumeTrue`는 `skipped`로 남습니다.
 
 ```kotlin
 package com.diamondscore.data.remote.mapper
@@ -716,6 +716,7 @@ import com.diamondscore.data.remote.dto.*
 import com.diamondscore.domain.model.*
 import kotlinx.serialization.decodeFromString   // json.decodeFromString<T>(String)은 StringFormat 확장
 import kotlinx.serialization.json.Json
+import org.junit.Assume.assumeTrue               // fixture가 없으면 통과가 아니라 skipped로 남긴다
 import org.junit.Test                            // kotlin-test JVM 아티팩트에는 Test가 없다 — Step 4와 같게 JUnit4
 import java.time.LocalDate
 import kotlin.test.assertEquals
@@ -769,12 +770,13 @@ class MapperTest {
         assertEquals("7회말", inningLabel("bs7_2"))
     }
 
-    /** 라이브 fixture는 경기일에만 받을 수 있는 선택 항목 — 없으면 이 테스트만 조용히 건너뛴다. */
+    /** 라이브 fixture는 경기일에만 받을 수 있는 선택 항목 — 없으면 이 테스트만 건너뛴다(결과에 skipped로 남는다). */
     @Test fun `진행 중 경기는 이닝 라벨이 그대로 상태가 된다`() {                            // 함정 4
-        javaClass.classLoader!!.getResource("fixtures/schedule_day_live.json") ?: return
-        val live = day("schedule_day_live.json").map { it.toSummary() }
-            .firstOrNull { it.status == GameStatus.LIVE } ?: return       // 캡처 시점에 진행 중 경기가 없었을 수 있다
-        assertTrue(Regex("""\d+회(초|말)""").matches(live.statusLabel))   // 몇 회인지는 캡처 시각에 달렸다
+        assumeTrue("schedule_day_live.json 없음 — 경기일에 받아 다시 돌린다",
+            javaClass.classLoader!!.getResource("fixtures/schedule_day_live.json") != null)
+        val live = day("schedule_day_live.json").map { it.toSummary() }.firstOrNull { it.status == GameStatus.LIVE }
+        assumeTrue("캡처 시점에 진행 중 경기가 없었다", live != null)
+        assertTrue(Regex("""\d+회(초|말)""").matches(live!!.statusLabel))   // 몇 회인지는 캡처 시각에 달렸다
         assertNotNull(live.homeRuns)                                      // 진행 중이면 0점이라도 값이 있다
     }
 
@@ -861,7 +863,9 @@ class MapperTest {
         assertEquals(5, r.recent.size)
         // 가장 최근 경기의 "누적 ERA" = 시즌 합계 ERA → 그 경기 성적이 아님이 증명된다
         assertEquals(r.months.last().era, r.recent.first().cumulativeEra)
-        val blank = r.recent.last()                                    // 8/22 롯데 — 날짜·상대만 옴
+        // 기록 없이 날짜·상대만 오는 행(곽빈 8/22 롯데). previous5는 등판할 때마다 밀려 이 행이 fixture에서 빠질 수 있어 모양만 고정한다
+        val blank = json.decodeFromString<PlayerGameDto>(
+            """{"game_date":"20260822","matchteamname":"롯데","ip":null,"np":null,"h":null,"so":null,"era":null}""").toPitchingGame()
         assertNotNull(blank.date); assertEquals("롯데", blank.opponent)
         assertNull(blank.innings); assertNull(blank.strikeOuts); assertNull(blank.pitches)
     }
@@ -879,7 +883,7 @@ class MapperTest {
 ./gradlew :app:testDebugUnitTest
 ```
 
-<div class="checkpoint"><span class="t"></span> 테스트가 초록불이면 완료. 특히 <strong>연장 경기에서 10·11회 득점이 라인스코어에 나타나는지</strong>, <strong>취소 경기의 부분 점수가 사라지는지</strong>, <strong>투수/타자 record가 섞이지 않는지</strong>가 이 앱에서 가장 자주 깨지는 부분이니 반드시 통과시키세요. <code>load("…")</code>의 파일 이름은 Step 1에서 저장한 이름과 정확히 같아야 합니다 — 라이브 캡처(<code>schedule_day_live.json</code>)만 선택이라, 없으면 그 테스트 하나만 건너뜁니다.</div>
+<div class="checkpoint"><span class="t"></span> 테스트가 초록불이면 완료. 특히 <strong>연장 경기에서 10·11회 득점이 라인스코어에 나타나는지</strong>, <strong>취소 경기의 부분 점수가 사라지는지</strong>, <strong>투수/타자 record가 섞이지 않는지</strong>가 이 앱에서 가장 자주 깨지는 부분이니 반드시 통과시키세요. <code>load("…")</code>의 파일 이름은 Step 1에서 저장한 이름과 정확히 같아야 합니다 — 라이브 캡처(<code>schedule_day_live.json</code>)만 선택이라, 없으면 그 테스트 하나만 건너뜁니다(결과: 19개 중 <code>skipped 1</code>. 2026-09-23 18:45 라이브 캡처로 돌리면 19개 모두 통과).</div>
 
 <div class="pager">
 <a href="#/labs/step-2">← Step 2</a>

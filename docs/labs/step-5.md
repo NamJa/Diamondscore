@@ -210,6 +210,8 @@ private fun GameCardPreview() = DiamondScoreTheme {
 
 이닝 수가 경기마다 다르고 연장이 붙습니다. **데이터에 있는 만큼만** 열을 그리고 최소 9열을 보장합니다.
 오른쪽 총계는 목업대로 **R · H · E** 세 열이고, H·E는 **값이 올 때만** 붙습니다(플랜 §1.3).
+**팀 열과 R·H·E는 고정하고 이닝만 가로로 스크롤합니다** — 표 전체를 한 줄로 스크롤하면 9이닝만으로도 64 + 9×34 + 3×34 = 472dp라, 폰 폭(411dp 기기에서 여백 빼고 약 380dp)에서는 R·H·E가 화면 밖으로 밀리고 스크롤하면 팀명 열까지 사라집니다(2026-09-23 실측).
+진행 중인 회(`liveInning`)만 라이브 색으로 칠하고, 종료 경기에는 넘기지 않습니다.
 
 `core/ui/LineScoreTable.kt`:
 
@@ -219,24 +221,28 @@ fun LineScoreTable(
     away: TeamRef, home: TeamRef, innings: List<InningRuns>,
     awayR: Int?, homeR: Int?,
     awayH: Int? = null, homeH: Int? = null, awayE: Int? = null, homeE: Int? = null,
+    liveInning: Int? = null,          // 진행 중인 회 — LIVE일 때만 넘긴다(종료 경기의 마지막 칸을 칠하지 않게)
 ) {
     val count = maxOf(9, innings.maxOfOrNull { it.number } ?: 9)
     Column {   // 에디토리얼: 카드 대신 위·아래 헤어라인
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-        Row(Modifier.horizontalScroll(rememberScrollState())) {    // 연장 시 가로 스크롤
-            Column {
+        Row {
+            Column {                                                // 팀 열은 고정
                 HeaderCell("", width = 64.dp); TeamCell(teamShort(away.id)); TeamCell(teamShort(home.id))
             }
-            for (n in 1..count) {
-                val r = innings.firstOrNull { it.number == n }
-                val extra = n > 9
-                Column {
-                    HeaderCell("$n", accent = extra)
-                    RunCell(r?.away, "${n}회 초 원정")                      // TalkBack: "1회 초 원정 1점"
-                    RunCell(r?.home, "${n}회 말 홈", live = (n == count))
+            // 이닝만 가로 스크롤 — 9이닝과 R·H·E를 한 줄에 두면 472dp라 폰 폭(약 380dp)에서 총계가 화면 밖으로 밀린다
+            Row(Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState())) {
+                for (n in 1..count) {
+                    val r = innings.firstOrNull { it.number == n }
+                    val extra = n > 9
+                    Column {
+                        HeaderCell("$n", accent = extra)
+                        RunCell(r?.away, "${n}회 초 원정", live = n == liveInning)   // TalkBack: "1회 초 원정 1점"
+                        RunCell(r?.home, "${n}회 말 홈", live = n == liveInning)
+                    }
                 }
             }
-            Column {
+            Column {                                                // 총계 열도 고정
                 HeaderCell("R", strong = true); TotalCell(awayR); TotalCell(homeR)
             }
             if (awayH != null || homeH != null) Column {       // 안타 — 공급될 때만
@@ -362,7 +368,7 @@ fun LoadingCards(count: Int = 4) = Column(
 fun EmptyDay(onNearest: () -> Unit) = CenterColumn {
     DsIcon(Icons.Outlined.CalendarMonth, size = 52.dp, tint = DsColors.muted2)
     Text("이 날은 경기가 없어요", style = MaterialTheme.typography.bodyLarge)
-    Text("월요일은 KBO 휴식일", color = DsColors.muted2, style = MaterialTheme.typography.labelMedium)
+    Text("월요일 휴식일이거나 경기가 없는 날이에요", color = DsColors.muted2, style = MaterialTheme.typography.labelMedium)   // 요일을 모르므로 단정하지 않는다
     OutlinedButton(onClick = onNearest) { Text("가장 가까운 경기일로") }
 }
 
@@ -559,15 +565,16 @@ Step 8의 **팀 선수단**·**선수 상세**가 함께 쓰는 셋입니다. �
 ```kotlin
 /** 선수 사진. 매퍼가 이미 https로 승격한 URL을 받는다(Step 3 함정 9). 없거나 실패하면 실루엣. */
 @Composable
-fun PlayerAvatar(photoUrl: String?, size: Dp = 34.dp) = AsyncImage(
-    model = photoUrl,
-    contentDescription = null,
-    placeholder = rememberVectorPainter(Icons.Outlined.Person),
-    error = rememberVectorPainter(Icons.Outlined.Person),
-    modifier = Modifier.size(size).clip(CircleShape)
+fun PlayerAvatar(photoUrl: String?, size: Dp = 34.dp) = Box(
+    Modifier.size(size).clip(CircleShape)
         .background(MaterialTheme.colorScheme.surfaceVariant)
         .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape),
-)
+    Alignment.Center,
+) {
+    // 실루엣은 사진 밑에 깔아 둔다 — Coil placeholder에 벡터를 넘기면 검정으로 그려져 다크에서 안 보인다
+    DsIcon(Icons.Outlined.Person, tint = DsColors.muted2, size = size * 0.6f)
+    AsyncImage(model = photoUrl, contentDescription = null, modifier = Modifier.matchParentSize())
+}
 
 /** 대표 기록 4칸. 첫 칸만 앱 액센트다 — 팀 색이 아닙니다(Step 2의 역할 구분). */
 @Composable
@@ -621,7 +628,7 @@ private fun StatLine(cells: List<String?>, weights: List<Float>, header: Boolean
 타자 월별(7열)·투수 월별(8열)·타자 최근(7열)·투수 최근(7열) — 네 벌인데 다른 건 <strong>헤더 문자열과 셀 문자열</strong>뿐입니다. 열 폭은 <code>weights</code>로 넘깁니다. 도메인 → 문자열 변환은 화면(Step 8)이 하고, 이 컴포넌트는 <code>String?</code>만 압니다 — 그래서 <code>core/ui</code>에 있어도 <code>PlayerRecord</code>를 몰라도 됩니다.
 </div>
 
-<div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(11이닝) · 순위 행+진출선 · 상태 4종 · 아바타/기록 표가 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다크·라이트 Preview를 <strong>둘 다</strong> 띄워 색 상수가 남아 있지 않은지 확인하세요. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
+<div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(11이닝) · 순위 행+진출선 · 상태 4종 · 아바타/기록 표가 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다크·라이트 Preview를 <strong>둘 다</strong> 띄워 색 상수가 남아 있지 않은지 확인하세요. 다크에서 예정 카드의 팀명·순위 승·패·무·빈 상태 제목이 안 보이면 Step 2 §10의 <code>LocalContentColor</code> 줄이 빠진 것입니다. 폰 폭(<code>widthDp = 360</code>)에서도 라인스코어의 팀 열과 R·H·E가 보여야 합니다. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-4">← Step 4</a>

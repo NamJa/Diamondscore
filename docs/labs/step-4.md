@@ -4,6 +4,10 @@
 
 wisetoto에는 날짜 조회(`Schedule_Day`)가 있지만, 그래도 시즌 전체를 Room에 넣어 둡니다 — 오프라인·즉시 응답·즐겨찾기 팀 일정 때문입니다. 프리페치 단위는 **월**(`Schedule_Month` 9회, 약 300KB)이고, 오늘 화면은 `Schedule_Day` 1회로 최신화합니다.
 
+<div class="callout tip"><span class="t">이 Step의 코드 블록은 package·import를 생략했다</span>
+엔티티·<code>DatabaseModule</code>·<code>App.kt</code>·테스트를 뺀 블록(DAO·Database·<code>GamesRepository</code>·엔티티 매퍼·워커)은 본문만 있습니다. 파일 경로대로 <code>package</code>를 달고 import는 IDE로 채웁니다. 두 가지만 주의하세요 — <code>toSummary</code>는 <code>data.remote.mapper</code>(DTO용)와 <code>data.local.mapper</code>(엔티티용) 두 패키지에 있어 <code>GamesRepository</code>는 <strong>둘 다</strong> import하고(<code>Envelope.body()</code>도 <code>data.remote.body</code> import), <code>StandingDao</code>·<code>FavoriteDao</code>는 한 블록으로 보여 주지만 제목대로 두 파일로 나눕니다(한 파일에 둬도 컴파일은 됩니다).
+</div>
+
 ## 1. 엔티티
 
 `data/local/entity/Entities.kt`:
@@ -205,9 +209,16 @@ class GamesRepository @Inject constructor(
 
     private suspend fun saveSummary(s: GameSummary, innings: List<InningRuns>? = null) {
         val old = dao.find(s.id)
-        // 선발은 Schedule_Day에만 있다 — Schedule_Month와 상세 응답은 null이므로 덮어쓰지 말고 기존 값을 보존한다
-        val entity = s.toEntity().let {
-            it.copy(homeStarter = it.homeStarter ?: old?.homeStarter, awayStarter = it.awayStarter ?: old?.awayStarter)
+        // 선발은 Schedule_Day에만 있다 — Schedule_Month와 상세 응답은 null이므로 덮어쓰지 말고 기존 값을 보존한다.
+        // Schedule_Month엔 inning도 없다(함정 7) → 이닝에서 나온 값(연장 여부·마지막 회·진행 라벨)도 기존 행 것을 쓴다
+        val entity = s.toEntity().let { e ->
+            val o = old?.takeIf { e.finalInning == null }          // inning 없이 온 행(월별 목록)일 때만
+            e.copy(
+                homeStarter = e.homeStarter ?: old?.homeStarter, awayStarter = e.awayStarter ?: old?.awayStarter,
+                finalInning = o?.finalInning ?: e.finalInning,
+                wentExtra = o?.wentExtra ?: e.wentExtra,
+                statusLabel = o?.takeIf { it.status == e.status }?.statusLabel ?: e.statusLabel,
+            )
         }
         // 함정 7: 변경 감지 필드가 없다 → 기존 행과 같으면 DB 쓰기 스킵 (불필요한 Flow 재방출 방지)
         if (innings == null && old == entity) return
@@ -250,6 +261,11 @@ data class DetailMeta(
 
 <div class="callout warn"><span class="t">취소 경기 재조회 시 옛 이닝이 남지 않게</span>
 노게임은 <code>state:"c"</code>로 바뀌면서 매퍼가 이닝을 빈 배열로 만듭니다(Step 3 함정 3). 그런데 <code>upsert</code>만 하면 3회까지 저장해 둔 부분 이닝 행이 그대로 남습니다 — Step 7의 상세 화면은 상태와 상관없이 라인스코어를 그리므로 “취소” 라벨 아래 1·2·3회 점수가 유령처럼 남습니다. 그래서 위 <code>saveGame</code>은 이닝을 받을 때마다 <code>clearInnings</code>로 먼저 비우고 다시 넣습니다(이닝이 줄어드는 정정도 같이 막힙니다). 목록 갱신은 <code>innings = null</code>이라 이 경로를 타지 않습니다.
+</div>
+
+<div class="callout warn"><span class="t">월별 목록 행에는 <code>inning</code>이 없다 — 연장 표기를 지우지 않게</span>
+<code>Schedule_Month</code> 행에는 <code>game_timestamp</code>·선발뿐 아니라 <strong><code>inning</code>도 없습니다</strong>(2026-09-23 실측 — 3~10월 전 행). 그대로 쓰면 월별 행이 <code>finalInning = null</code>·<code>wentExtra = false</code>가 되어, <code>Schedule_Day</code>나 상세가 채워 둔 "연장 11회"를 <strong>다음 날 프리페치가 "종료"로 되돌립니다</strong>(라인스코어 11열은 남아 목록과 어긋남). 그래서 <code>saveSummary</code>는 inning 없이 온 행이면 이닝에서 나온 값(<code>finalInning</code>·<code>wentExtra</code>, 상태가 같을 때의 진행 라벨)을 기존 행에서 가져옵니다 — §6의 <code>프리페치는 상세가 채운 연장 정보를 지우지 않는다</code>가 이 규칙을 고정합니다.
+<br>남는 한계: 프리페치로만 들어온 과거 경기는 연장 정보가 처음부터 없어서 목록에 "종료"로 보이고, 그 날 <code>Schedule_Day</code>나 상세를 한 번 받아야 "연장 N회"가 붙습니다(날짜 이동을 네트워크 없이 하는 설계의 대가입니다).
 </div>
 
 ### 엔티티 ↔ 도메인 매퍼
@@ -476,6 +492,16 @@ class RepositoryTest {
         assertEquals(starter, dao.rows[490691L]!!.homeStarter)    // 상세 응답엔 선발이 없다 → 보존
     }
 
+    @Test fun `프리페치는 상세가 채운 연장 정보를 지우지 않는다`() = runTest {
+        serve("Schedule_Day/" to fixture("schedule_day_finished.json"),
+              "Schedule_Month/" to fixture("schedule_month.json"),     // 9월 — 490683(09-10 연장 11회)이 있다
+              "schedule/" to fixture("game_extra.json"))
+        repo.refreshGame(490683L)                                      // 상세: inning bs11_2 → 연장 11회
+        repo.prefetchSeason(2026)                                      // 월별 목록 행엔 inning이 없다(함정 7)
+        val row = dao.rows[490683L]!!
+        assertTrue(row.wentExtra); assertEquals(11, row.finalInning)
+    }
+
     @Test fun `code 01 봉투는 예외가 되고 기존 행은 살아 있다`() = runTest {
         serve("Schedule_Day/" to fixture("schedule_day_finished.json"))
         repo.refreshDay(LocalDate.of(2026, 9, 13))
@@ -490,7 +516,7 @@ class RepositoryTest {
 ./gradlew :app:testDebugUnitTest
 ```
 
-<div class="checkpoint"><span class="t"></span> 앱을 한 번 실행해 프리페치가 돌게 한 뒤 <strong>비행기 모드</strong>로 바꿔도, <code>observeByDate</code>로 과거/미래 날짜의 경기가 조회되면 성공. (아직 화면은 없으니 로그나 DB Inspector로 확인)</div>
+<div class="checkpoint"><span class="t"></span> 테스트 5개가 초록불이고, 앱을 한 번 실행해 프리페치가 돌게 한 뒤 <strong>비행기 모드</strong>로 바꿔도 과거/미래 날짜의 경기가 Room에 남아 있으면 성공(아직 화면은 없으니 App Inspection의 Database Inspector로 <code>games</code> 테이블을 봅니다 — 2026-09-23 실측 782행, 3/28~10/7, 시범경기·WBC 없음). logcat에 <code>WM-WorkerWrapper: Worker result SUCCESS … PrefetchWorker</code>가 찍혔다면 <strong>계획서 <code>DS-001</code>(기기에서 <code>code:"00"</code>)도 통과</strong>입니다 — 워커는 응답이 하나라도 <code>"00"</code>이 아니면 <code>retry</code>로 끝납니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-3">← Step 3</a>

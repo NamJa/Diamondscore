@@ -333,7 +333,7 @@ Base URL: `https://bsrest.wisetoto.com/` · 공통 쿼리 `os=a&version=4.1.3&la
   "game_date": "2026-09-13 17:00:00",     // 표시용 문자열 (Month에는 이것만 있음)
   "game_timestamp": 1789286400,           // Day에만
   "state": "e",                            // a 예정 · e 종료 · c 취소
-  "inning": "bs9_1",                       // 9회초 (홈 승 → 9회말 미실시)
+  "inning": "bs9_1",                       // 9회초 (홈 승 → 9회말 미실시) — Day에만 (Month엔 없다, 2026-09-23 실측)
   "stadium_name": "기아챔피언스필드",
   "home_team_info_seq": "320", "home_team_name": "KIA", "home_pitcher": "시라카와",
   "away_team_info_seq": "319", "away_team_name": "한화", "away_pitcher": "화이트",
@@ -445,6 +445,9 @@ Base URL: `https://bsrest.wisetoto.com/` · 공통 쿼리 `os=a&version=4.1.3&la
    시각은 `game_timestamp`(초)만 쓴다. SofaScore의 `changeTimestamp` 같은 델타 필드가 없으므로 **DB 쓰기 스킵은
    기존 행과의 동등 비교**로 한다(§6). `Schedule_Month` 행에는 `game_timestamp`도 **`home_pitcher`·`away_pitcher`도 없다** —
    프리페치만 된 미래 경기는 선발이 `null`이고, 당일 `Schedule_Day`로 채워진다. 여기서 "선발 미정"을 지어내지 않는다.
+   **`inning`도 없다**(2026-09-23 실측 — 3~10월 전 행). 월별 행을 그대로 upsert하면 `Schedule_Day`·상세가 채운 연장 여부·마지막 회·진행 라벨이
+   다음 날 프리페치에서 지워지므로, inning 없이 온 행은 **이닝 파생값을 기존 행에서 보존**한다(§6). 프리페치로만 들어온 과거 연장 경기는
+   그 날 `Schedule_Day`나 상세를 받기 전까지 "종료"로 보인다.
 
 8. **목록에 KBO가 아닌 경기가 섞여 있다.** WBC·시범경기·올스타전이 `Schedule_Day`/`Schedule_Month`에 같이 온다(§3.2). 행에
    리그 필드가 없으니 **양 팀 `team_info_seq`가 KBO 10구단이고 날짜가 `league_rank.start` 이후**인 행만 받는다. 이 필터가
@@ -718,11 +721,11 @@ Coil 3는 `coil-network-okhttp`로 OkHttp 네트워크 스택을 쓴다(위 인�
 | 항목 | 확정 버전 | 비고 |
 |---|---|---|
 | Build | **AGP 9.4.0, Gradle 9.7.1**, JDK 17 | AGP 9.4는 Gradle 9.6.0 이상 필수 |
-| SDK | `compileSdk`/`targetSdk` 36, `minSdk` 26 | Play 신규 앱 요건(2026-08-31 발효)이 API 36. AGP 9.4는 37까지 지원하나 36으로 고정 |
+| SDK | `compileSdk` 37, `targetSdk` 36, `minSdk` 26 | `targetSdk`는 Play 신규 앱 요건(2026-08-31 발효)인 36으로 고정. `compileSdk`는 이 표의 라이브러리(Compose 1.12.0·core-ktx 1.19.0·lifecycle 2.11.0·Coil 3.6.1·OkHttp 5.5.0·adaptive 1.3.0 등 29개)가 AAR 메타데이터로 37을 요구해 37 — 36이면 `checkDebugAarMetadata`에서 빌드 실패(2026-09-23 실측) |
 | Language | **Kotlin 2.4.10** | AGP built-in Kotlin(2.2.10)을 루트 `buildscript`에서 승격 |
 | UI | Compose BOM **2026.08.00** + Material 3 | ui 1.12.0 / material3 1.4.0을 BOM이 관리. `ui-text-google-fonts`(Bebas Neue 동적 로딩)와 `material-icons-extended`(BOM이 1.7.8로 동결, 이후 업데이트 없음)도 BOM이 버전을 준다 |
 | Compose 컴파일러 | `org.jetbrains.kotlin.plugin.compose` | Kotlin 동봉, 별도 버전 pin 없음 |
-| Navigation | **Navigation 3 `1.1.7`** | `navigation3-runtime` + `navigation3-ui`. Nav2(`navigation-compose`)는 쓰지 않는다 |
+| Navigation | **Navigation 3 `1.1.7`** | `navigation3-runtime` + `navigation3-ui`. Nav2(`navigation-compose`)는 쓰지 않는다. `NavDisplay`의 전략 인자는 `sceneStrategies`(List) — 1.0의 단수 `sceneStrategy`는 숨겨져 컴파일되지 않는다 |
 | Nav3 보조 | `lifecycle-viewmodel-navigation3` 2.11.0, `adaptive-navigation3` **1.3.0** | 각각 ViewModel 스코핑, 목록-상세 2-pane |
 | DI | **Hilt 2.60.1**(KSP2), `androidx.hilt` 1.4.0 | `hilt-lifecycle-viewmodel-compose`(Nav3용) + `hilt-work` |
 | Annotation 처리 | **KSP 2.3.11**, kapt 미사용 | §5.3의 독립 버전제 주의 |
@@ -732,7 +735,7 @@ Coil 3는 `coil-network-okhttp`로 OkHttp 네트워크 스택을 쓴다(위 인�
 | Images | Coil **3.6.1** (`coil-compose` + `coil-network-okhttp`) | OkHttp 네트워크 스택 사용(인스턴스 공유 배선은 랩 미구현 — P1) |
 | Lifecycle | **2.11.0** | `lifecycle-runtime-compose`(`collectAsStateWithLifecycle`) |
 | 기타 AndroidX | core-ktx **1.19.0**, activity-compose **1.13.0** | |
-| Quality | JUnit 4.13.2, `kotlin-test`, kotlinx-coroutines-test 1.11.0, Turbine 1.2.1, MockWebServer 5.5.0, Compose UI Test(BOM), room-testing, hilt-android-testing | `kotlin-test`(`assertFailsWith`·`assertIs`)는 `kotlin` ref를 그대로 따른다 |
+| Quality | JUnit 4.13.2, `kotlin-test`, kotlinx-coroutines-test 1.11.0, Turbine 1.2.1, MockWebServer 5.5.0, Compose UI Test(BOM), **Espresso 3.7.0**, room-testing, hilt-android-testing | `kotlin-test`(`assertFailsWith`·`assertIs`)는 `kotlin` ref를 그대로 따른다. Espresso는 명시 필수 — Compose UI Test가 끌어오는 3.5.0은 API 34+에서 `InputManager.getInstance` 리플렉션으로 실패(2026-09-23 실측) |
 
 동적 버전을 금지하고 version catalog에 고정한다(Codelabs Step 2가 전체 catalog). 서로 묶인 세 줄은
 **Gradle ≥ 9.6 / KSP 2.3.x / Hilt ≥ 2.60**이며, 하나만 어긋나도 sync 단계에서 깨진다.
@@ -802,6 +805,7 @@ Room을 읽기 SSOT로 쓴다. ViewModel은 항상 DAO의 `Flow`만 구독한다
 - 경기 상세 갱신은 `GameEntity` + `InningRunEntity`를 **한 트랜잭션**으로 upsert. 총점과 이닝이 불일치하는 중간 상태가 UI에 보이면 안 된다.
 - 델타 필드가 없으므로(§3.4-7) **새 행이 기존 행과 `data class` 동등이면 DB 쓰기를 건너뛴다.** 불필요한 `Flow` 재방출과 recomposition을 막는 가장 효과적인 최적화다. 이 비교가 성립하려면 엔티티에 갱신 시각 같은 필드를 넣지 않는다.
 - 목록(`Schedule_Day/Month`) 갱신은 `GameEntity`만 만지고 `InningRunEntity`는 건드리지 않는다(목록엔 이닝이 없다). 취소로 바뀐 경기는 이닝 행을 지운다.
+- `Schedule_Month` 행은 선발·`inning`이 없으므로(§3.4-7) 합칠 때 **선발과 이닝 파생값(`finalInning`·`wentExtra`, 상태가 같으면 진행 라벨)은 기존 행 값을 보존**한다. 안 그러면 하루 1회 프리페치가 "연장 11회"를 "종료"로 되돌린다(Codelabs Step 4 `saveSummary`, 2026-09-23 회귀 테스트로 고정).
 - 프리페치는 upsert이므로 기존 행의 즐겨찾기·로컬 상태를 지우지 않는다.
 
 테마·설정은 DataStore.
@@ -825,15 +829,20 @@ Room을 읽기 SSOT로 쓴다. ViewModel은 항상 DAO의 `Flow`만 구독한다
 | 화면 / 상태 | 간격 | 요청 |
 |---|---:|---|
 | 경기 목록, 라이브 있음 | 20초 | `Schedule_Day/{오늘}` × 1 (공식 앱은 4초) |
+| 경기 목록, 시작 시각이 지난 예정 경기 있음 | 20초 | 라이브와 같다 — `LIVE`로 바뀌기 전의 예정 행도 폴링 대상에 넣는다(아래 주석) |
 | 경기 목록, 라이브 없음 | 폴링 없음 | 진입 시 1회 + 당겨서 새로고침 |
-| 경기 상세, `LIVE` | 15초 | `live/schedule/{seq}` × 1 (라인스코어·R/H/E 필요, 서버 캐시 2초) |
-| 경기 상세, `SCHEDULED` | 폴링 없음 | 진입 시 1회 |
+| 경기 상세, `LIVE` 또는 시작 시각이 지난 `SCHEDULED` | 15초 | `live/schedule/{seq}` × 1 (라인스코어·R/H/E 필요, 서버 캐시 2초) |
+| 경기 상세, 시작 전 `SCHEDULED` | 폴링 없음 | 진입 시 1회 |
 | 경기 상세, `FINAL` | 중단 | 전환 직후 1회 확정 조회 |
 | 순위 | TTL 10분 | `League_Rank?year=` 진입 시 조건부 (서버 캐시 1시간) |
 | 시즌 일정 프리페치 | 하루 1회 | `Schedule_Month/{현재·다음 달}` (재편성 반영) |
 
 전부 **화면이 `STARTED` 라이프사이클일 때만** 동작한다. WorkManager는 최소 주기 제한이 있어 실시간
 폴링에 쓰지 않고, 캐시 동기화와 일정 프리페치에만 쓴다.
+
+> 폴링 조건을 "Room에 `LIVE` 행이 있음"으로만 두면 **경기 전에 열어 둔 화면은 영영 예정에 머문다** — 진입 갱신은 한 번뿐이라
+> `a → i` 전환을 볼 요청이 없다(2026-09-23 실측: 18:21에 연 목록이 18:38까지 요청 0건, 서버는 이미 `i`). 그래서 시작 시각이 지난
+> 예정 경기도 폴링 대상에 넣고, 시각이 지나는 순간은 1분 단위 시계로 알아챈다(Codelabs Step 6 `rememberMinuteClock`).
 
 > 목록 응답에는 이닝별 득점이 없고(총점·이닝 코드만) 상세에만 `boxscore`가 있으므로 상세 폴링은 필수다.
 > 상세 응답의 `other_game_state`에 같은 날 다른 경기의 점수·이닝이 함께 오므로, 상세 화면을 보는 동안은
@@ -865,7 +874,8 @@ class LivePoller<T>(
 `LIVE → FINAL`(`state: e`) 전환을 감지하면 폴링 중단 **전에** `live/schedule/{seq}`를 1회 더 호출해 최종 점수·RHEB를
 확정한다(실측상 상태와 함께 온다, §2.4). **투수 요약(`end_summary`)은 종료 후 7~8분 뒤에 채워지므로** 전환 직후 응답엔
 `null`이다 — 15초 폴링을 계속 돌리지 말고, 종료 10분 뒤 1회 지연 조회를 예약하거나 다음에 상세를 열 때 다시 받는다.
-`end_summary.pitcher_batter_record.win_pitcher != null`이 요약 확정 신호다.
+`end_summary.pitcher_batter_record.win_pitcher != null`이 요약 확정 신호다. 요약이 비었는지는 **10분 뒤에** 판정한다 —
+이미 끝난 경기를 열면 캐시의 `FINAL`이 진입 조회보다 먼저 보여 요약이 비어 보이므로, 먼저 판정하면 열 때마다 헛조회가 1회 나간다(2026-09-23 실측).
 
 ---
 
@@ -880,12 +890,12 @@ class LivePoller<T>(
 
 §2.4의 미검증 항목을 닫는다. **여기서 막히면 이후 전부 무의미하므로 코드 작성 전에 한다.**
 
-- [ ] `DS-001` **실기기/에뮬레이터에서 앱의 OkHttp로 `live/Schedule_Day/{오늘}`이 봉투 `code:"00"`으로 오는지 확인.** 모바일 네트워크와 Wi-Fi 양쪽. HTTP 200은 판정 기준이 아니다(§3.4-1). `01`이면 공통 쿼리 인터셉터부터 본다
+- [ ] `DS-001` **실기기/에뮬레이터에서 앱의 OkHttp로 `live/Schedule_Day/{오늘}`이 봉투 `code:"00"`으로 오는지 확인.** 모바일 네트워크와 Wi-Fi 양쪽. HTTP 200은 판정 기준이 아니다(§3.4-1). `01`이면 공통 쿼리 인터셉터부터 본다. Codelabs에서는 Step 4 프리페치 워커가 첫 호출이다(워커는 전부 `00`일 때만 `SUCCESS`) — 2026-09-23 에뮬레이터(API 37, 호스트 망)에서 확인, 실기기 모바일 네트워크는 미확인이라 열어 둔다
 - `DS-002` **라이브 스키마 관측** — 아래 `DS-002a`(시작)·`DS-002b`(종료)로 나뉜다. 다른 절의 `DS-002` 참조는 이 둘을 함께 가리키며, 두 관측 모두 2026-09-15에 끝났다
 - [x] `DS-002a` **라이브 시작 관측 (2026-09-15 18:31)** — 진행 중 `state = i`, 목록 행에 볼카운트·주자·현재 투수/타자 포함, `boxscore` 현재 하프이닝 `0`, `game_result`가 이닝 라벨(§2.4·§3.4-4)
 - [x] `DS-002b` **라이브 종료 관측 (2026-09-15 21:24~21:32)** — `i → e`와 최종 점수·RHEB는 동시, `end_summary`·목록 `detail.win_pitcher`는 **7~8분 뒤** 채워짐(§2.4·§7.3). 연장 경기의 라이브 표현은 미관측(추가 경기일에 확인)
-- [ ] `DS-003` `/extra/notice` 부트스트랩 응답의 `update.next_action`·`server.next_action` 처리 — 강제 업데이트/차단 신호를 앱 시작 시 확인
-- [ ] `DS-004` 프리페치 확인 — `Schedule_Month` 3~11월 890행 중 KBO 필터(§3.4-8) 통과 행 수가 실측치(2026-09-20 기준 782행 = 종료 653 + 취소 70 + 예정 59)와 맞는지, WBC·시범경기·올스타전이 걸러지는지
+- [ ] `DS-003` `/extra/notice` 부트스트랩 응답의 `update.next_action`·`server.next_action` 처리 — 강제 업데이트/차단 신호를 앱 시작 시 확인. Codelabs는 API·DTO(Step 3)까지만 있고 호출하는 코드는 없다(2026-09-23 확인)
+- [x] `DS-004` 프리페치 확인 — `Schedule_Month` 3~11월 890행 중 KBO 필터(§3.4-8) 통과 행 수가 실측치(2026-09-20 기준 782행 = 종료 653 + 취소 70 + 예정 59)와 맞는지, WBC·시범경기·올스타전이 걸러지는지. **2026-09-23 Codelabs 앱에서 확인** — Room 782행(종료 657 + 취소 70 + 예정 55), 3/28~10/7, 시범경기·WBC 없음
 - [x] `DS-006` **팀·선수 스키마 실측 (2026-09-18)** — `Team_Info`의 `player_position` 필수(0=투수/그 외=타자), 목록에 포지션 없음,
   등번호 중복(두산 48번 2명), `team_history` 구분자 소문자 `l`, `Player_Info`의 `c_position` 기반 스키마 분기,
   `month:"13"`=시즌 합계(월 합과 불일치), 이닝 표기 2종, `previous5`의 누적 ERA·전 필드 null 행(§3.4-9~12)
@@ -898,7 +908,7 @@ class LivePoller<T>(
 
 ### Step 2 — 프로젝트 부트스트랩 (0.5일)
 
-- [ ] `DS-010` Compose 프로젝트, version catalog(§5.4), `compileSdk 36` / `minSdk 26`, AGP built-in Kotlin(§5.3)
+- [ ] `DS-010` Compose 프로젝트, version catalog(§5.4), `compileSdk 37` / `targetSdk 36` / `minSdk 26`, AGP built-in Kotlin(§5.3)
 - [ ] `DS-011` Hilt(KSP2), Retrofit 3/OkHttp/kotlinx.serialization, Room(KSP2), Coil 3, **Navigation 3**
 - [ ] `DS-012` Material 3 테마 + **10개 구단 자체 컬러 토큰**(§2.2) + 한국어 팀명 리소스(§2.2) — 팀명은 `core/common`, 컬러는 `core/designsystem`으로 분리(§5.1). 글자용 `teamTint`와 앱 액센트의 역할을 분리(§1.3)
 - [ ] `DS-013` `core/navigation`에 `NavKey` 9개 정의(`@Serializable`) — 탭 4 + 인자 화면 4(경기·팀·선수단·선수) + 설정
@@ -971,7 +981,7 @@ class LivePoller<T>(
 - [ ] `DS-072` 접근성 — TalkBack 순서, 48dp, 200% 글꼴에서 라인스코어 스크롤
 - [ ] `DS-073` 적응형 레이아웃 — `ListDetailSceneStrategy`로 compact/medium/expanded 목록-상세
 - [ ] `DS-074` Baseline Profile, 30분 라이브 배터리·메모리 측정
-- [ ] `DS-075` R8 릴리스 빌드 검증
+- [x] `DS-075` R8 릴리스 빌드 검증 — 2026-09-23 Codelabs 코드로 확인(release에 디버그 키 서명 필요 — 없으면 설치 불가): 전 화면·프리페치 워커·프로세스 재생성 후 탭·back stack 복원 정상, 별도 keep 규칙 없음
 
 **총 예상: 11~12일** (1인). 단 Step 6·7 검증이 실제 경기일에 묶이므로 캘린더 기준 2~3주.
 팀·선수 화면(Step 8)은 경기일과 무관하게 검증되므로 라이브 검증을 기다리는 동안 끼워 넣을 수 있다.

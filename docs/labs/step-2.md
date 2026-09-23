@@ -24,7 +24,7 @@ Finish 후 상단에서 **Sync**가 끝날 때까지 기다립니다.
 ```kotlin
 android {
     namespace = "com.diamondscore"
-    compileSdk = 36
+    compileSdk = 37                     // 카탈로그 라이브러리가 37을 요구한다(아래 callout). targetSdk는 36
 
     defaultConfig {
         applicationId = "com.diamondscore"
@@ -46,10 +46,16 @@ android {
             isMinifyEnabled = true          // R8 full mode
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")   // 개인용 — 서명이 없으면 릴리스 APK를 설치조차 못 한다(Step 9 §7)
         }
     }
 }
 ```
+
+<div class="callout warn"><span class="t"><code>compileSdk</code>는 37, <code>targetSdk</code>는 36</span>
+§3 카탈로그의 라이브러리 29개(Compose BOM 2026.08의 1.12.0, core-ktx 1.19.0, lifecycle 2.11.0, Coil 3.6.1, OkHttp 5.5.0, adaptive 1.3.0, hilt-lifecycle-viewmodel-compose 1.4.0 등)가 AAR 메타데이터로 <strong>compileSdk 37 이상</strong>을 요구합니다. 36으로 두면 <code>:app:checkDebugAarMetadata</code>에서 빌드가 멈춥니다(2026-09-23 실측). <code>compileSdk</code>는 어떤 API로 컴파일할지일 뿐이라 올려도 동작이 바뀌지 않고, 실행 동작을 정하는 <code>targetSdk</code>는 Play 요건대로 36에 둡니다. Step 0에서 SDK Platform 37을 설치한 이유입니다.
+<br><code>signingConfig</code> 줄은 개인용 편의입니다 — 없으면 <code>assembleRelease</code>가 <code>app-release-unsigned.apk</code>를 만들고 <code>adb install</code>이 <code>INSTALL_PARSE_FAILED_NO_CERTIFICATES</code>로 거절해 Step 9 §7의 "릴리스를 실제로 실행"을 할 수 없습니다. 스토어에 올릴 때는 업로드 키로 바꿉니다.
+</div>
 
 <div class="callout warn"><span class="t">AGP 9는 Kotlin이 내장이다</span>
 AGP 9.0부터 <strong>built-in Kotlin</strong>이 기본이라 <code>org.jetbrains.kotlin.android</code> 플러그인을 적용하지 <strong>않습니다</strong>(새 DSL과 비호환). 그래서 <code>android { kotlinOptions { } }</code>도 없습니다 — 컴파일러 옵션은 최상위 <code>kotlin { compilerOptions { } }</code>에 씁니다. 별도 옵션이 없으면 jvmTarget은 위 <code>compileOptions.targetCompatibility</code>를 따라가므로 아무것도 더 쓸 필요가 없습니다.
@@ -81,6 +87,7 @@ coreKtx = "1.19.0"
 activityCompose = "1.13.0"
 datastore = "1.2.1"
 turbine = "1.2.1"
+espresso = "3.7.0"
 junit = "4.13.2"
 
 [libraries]
@@ -99,6 +106,7 @@ compose-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }   # 명시하지 않으면 ui-test-junit4가 끌어오는 3.5.0이 쓰여 API 34+에서 깨진다(§4)
 
 # Navigation 3 (Nav2의 NavHost·NavController는 쓰지 않습니다 — Step 9)
 nav3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "nav3" }
@@ -211,6 +219,9 @@ dependencies {
 
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
+    // ui-test-junit4는 espresso-core 3.5.0·runner 1.5.0을 끌어오는데, 3.5.0은 API 34+ 기기에서
+    // NoSuchMethodException(InputManager.getInstance)으로 모든 Compose UI 테스트를 깨뜨린다(Step 9 §5). 템플릿이 넣던 3.7.0을 명시한다
+    androidTestImplementation(libs.espresso.core)
     // Hilt 계측 테스트를 실제로 작성할 때는 kspAndroidTest(libs.hilt.compiler)와
     // HiltTestApplication을 띄우는 커스텀 러너가 더 필요합니다(이 튜토리얼 범위 밖).
     androidTestImplementation(libs.hilt.android.testing)
@@ -425,6 +436,7 @@ val ScoreNumber = TextStyle(
 
 <div class="callout tip"><span class="t">오프라인 대안</span>
 Google Fonts 다운로드가 부담되면 <code>Bebas Neue</code>·<code>Archivo</code> <code>.ttf</code>를 <code>res/font/</code>에 넣고 <code>FontFamily(Font(R.font.bebas_neue))</code>로 바꾸면 됩니다(이 경로에서는 앱 리소스라 <code>import com.diamondscore.R</code>가 필요합니다). 한글은 시스템 Noto Sans KR가 폴백합니다. <code>Display</code>는 콘덴스드라 <strong>초대형 스코어·섹션 헤더 전용</strong>, 본문엔 쓰지 않습니다.
+<br>lint는 위 인증서 배열에 <code>PrivateResource</code> 경고를 냅니다 — 라이브러리 비공개 리소스라 지금은 동작하지만(2026-09-23 Compose 1.12.0 실측) 버전을 올릴 때 사라질 수 있습니다. 그때는 이 오프라인 대안으로 바꿉니다.
 </div>
 
 ## 8. 구단 컬러 + 한국어 팀명
@@ -549,21 +561,31 @@ import kotlinx.serialization.Serializable
 ```kotlin
 package com.diamondscore.core.designsystem
 
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 
 @Composable
 fun DiamondScoreTheme(dark: Boolean = true, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalDsExtras provides if (dark) DarkExtras else LightExtras) {
+    val scheme = if (dark) DsDarkColors else DsLightColors
+    CompositionLocalProvider(
+        LocalDsExtras provides if (dark) DarkExtras else LightExtras,
+        // M3 MaterialTheme은 기본 글자색을 주지 않는다(Surface·Scaffold만 준다). 없으면 색을 안 적은 Text·Icon이 검정이 된다
+        LocalContentColor provides scheme.onBackground,
+    ) {
         MaterialTheme(
-            colorScheme = if (dark) DsDarkColors else DsLightColors,
+            colorScheme = scheme,
             typography = DsTypography,
             content = content,
         )
     }
 }
 ```
+
+<div class="callout warn"><span class="t"><code>LocalContentColor</code> 줄을 빼면 다크에서 글자가 사라진다</span>
+M3의 <code>MaterialTheme</code>은 색 스킴만 깔고 기본 글자색(<code>LocalContentColor</code>)은 건드리지 않습니다 — 그 값은 <code>Surface</code>·<code>Scaffold</code>가 줍니다. Step 5 Preview와 Step 6~8의 화면은 <code>Column.background(…)</code>만 쓰고 <code>Scaffold</code>는 Step 9에서야 들어오므로, 이 줄이 없으면 색을 적지 않은 <code>Text</code>·<code>Icon</code>이 기본값 <strong>검정</strong>으로 그려져 근블랙 배경에서 안 보입니다(화면 제목·날짜 바·팀명·순위 수치·뒤로 버튼 — 2026-09-23 실측). 라이트에선 검정이 우연히 읽혀서 놓치기 쉽습니다.
+</div>
 
 템플릿이 만든 `com.diamondscore.ui.theme` 패키지(`Color.kt`·`Theme.kt`·`Type.kt`)는 **통째로 삭제**합니다 —
 같은 이름의 `DiamondScoreTheme`이 들어 있어 위 함수와 충돌합니다. `MainActivity`의 import를
@@ -576,7 +598,7 @@ fun DiamondScoreTheme(dark: Boolean = true, content: @Composable () -> Unit) {
 ./gradlew :app:assembleDebug
 ```
 
-<div class="checkpoint"><span class="t"></span> <code>BUILD SUCCESSFUL</code>이 뜨고, ▶로 실행 시 배경이 <code>#07080B</code> 근블랙으로 칠해지면 디자인 시스템까지 완료. (컴포넌트는 Step 5에서 만듭니다)</div>
+<div class="checkpoint"><span class="t"></span> <code>BUILD SUCCESSFUL</code>이 뜨고, ▶로 실행 시 배경이 <code>#07080B</code> 근블랙으로 칠해지면 디자인 시스템까지 완료. (컴포넌트는 Step 5에서 만듭니다) 템플릿 <code>MainActivity</code>의 <code>enableEdgeToEdge()</code>는 시스템 다크 모드를 따르므로, 시스템이 라이트면 이 시점엔 상태바 아이콘이 어둡게 그려져 잘 안 보입니다 — 앱 테마에 맞추는 코드는 Step 9 §1에서 넣습니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-1">← Step 1</a>

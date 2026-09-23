@@ -18,7 +18,7 @@ Kotlin 2.4.10 · Jetpack Compose (Material 3) · 클린 아키텍처(단일 `:ap
 - **네트워크**: Retrofit 3.0.0 + OkHttp 5.5.0 + kotlinx.serialization 1.11.0
 - **이미지**: Coil 3.6.1 (`coil-compose` + `coil-network-okhttp`, OkHttp 네트워크 스택 사용)
 - **로컬**: Room 2.8.4 (읽기 SSOT) + DataStore · **DI**: Hilt 2.60.1
-- **SDK**: `compileSdk`/`targetSdk` 36, `minSdk` 26 · **릴리스**: R8 full mode
+- **SDK**: `compileSdk` 37 / `targetSdk` 36, `minSdk` 26 (카탈로그 라이브러리가 compileSdk 37을 요구 — 2026-09-23 실측) · **릴리스**: R8 full mode
 
 전체 버전표와 서로 묶인 조합(Gradle ≥ 9.6 / KSP 2.3.x / Hilt ≥ 2.60)은 [구현 계획 §5.4](./docs/IMPLEMENTATION_PLAN_KO.md)에 있습니다.
 

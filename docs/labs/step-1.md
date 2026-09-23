@@ -24,13 +24,16 @@ wt /rank/League_Rank "year=2026"      | head -c 120 ; echo   # 추가 쿼리는 
 
 ## 2. 실기기에서도 되는지 확인
 
-앱은 결국 휴대전화에서 돕니다. 이 API는 클라이언트를 가리지 않으므로(curl·OkHttp·브라우저 전부 200) 실기기에서 실패할 이유는 사실상 네트워크뿐입니다. **실기기 확정은 Step 3에서 만든 앱의 첫 호출**로 합니다(계획서 `DS-001`). 판정 기준은 HTTP 상태가 아니라 응답 봉투의 `code:"00"`입니다.
+앱은 결국 휴대전화에서 돕니다. 이 API는 클라이언트를 가리지 않으므로(curl·OkHttp·브라우저 전부 200) 실기기에서 실패할 이유는 사실상 네트워크뿐입니다. **실기기 확정은 Step 4에서 앱을 처음 실행할 때 프리페치 워커가 하는 첫 호출**로 합니다(계획서 `DS-001` — Step 3까지의 앱은 아직 API를 부르지 않습니다). 판정 기준은 HTTP 상태가 아니라 응답 봉투의 `code:"00"`이고, 워커는 모든 응답이 `"00"`일 때만 `SUCCESS`로 끝납니다.
 
 ## 3. 핵심 엔드포인트 응답 저장
 
 이후 Step에서 **테스트 fixture**로 쓸 실제 응답을 파일로 저장합니다. 날짜는 2026 시즌에서 성격이 다른 날을 골랐습니다 — 종료일, 우천 취소일, 연장 11회 경기. 예정 경기만은 고정 날짜가 아니라 **오늘** 목록에서 받습니다(바로 아래 이유). 팀·선수는 **두산 베어스(316)** 기준입니다(목업과 같은 팀).
 
+`fixtures/`는 Step 2에서 만들 프로젝트(Android Studio 기본 위치 `~/AndroidStudioProjects/DiamondScore`)의 **옆 폴더**에 둡니다 — Step 3이 프로젝트 루트에서 `../fixtures`로 복사합니다. 다른 곳에 두면 Step 3의 복사 경로를 그 위치로 바꾸세요.
+
 ```bash
+mkdir -p ~/AndroidStudioProjects && cd ~/AndroidStudioProjects   # 프로젝트 폴더 옆
 mkdir -p fixtures
 wt() { curl -sS "https://bsrest.wisetoto.com$1?os=a&version=4.1.3&lang=kr${2:+&$2}"; }
 
@@ -114,18 +117,19 @@ jq '.data.player_info | {pos: .player_detail.c_position, month: .record.month[-1
   (`jq -r '.data.team_info.player_list[].c_number' fixtures/team_info_pitchers.json | sort | uniq -d`)
 - 타자(`player_batter.json`)의 `record.month[]`는 `avg`·`ab`·`h`·`hr`·`rbi`, 투수(`player_pitcher.json`)는 `era`·`win`·`lose`·`inning`·`so` — **키가 아예 다른가**
 - 두 파일 모두 `record.month`의 마지막 원소가 `"month": "13"` 인가 — 13월이 아니라 **시즌 합계**입니다
-- 투수의 월별 `inning`은 `"29 2/3"`(대분수 문자열)인데 `previous5`의 `ip`는 `"0.2"`·`"7.0"`인가 — **`0.2`는 0.2이닝이 아니라 ⅔이닝**입니다
+- 투수의 월별 `inning`은 `"29 2/3"`(대분수 문자열)인데 `previous5`의 `ip`는 `"7.0"`처럼 소수 표기인가 — 소수점 뒤는 아웃 카운트라 **`"0.2"`는 0.2이닝이 아니라 ⅔이닝**입니다(곽빈처럼 긴 이닝을 던지는 선발 fixture에는 `"7.0"`·`"6.0"`만 있고, `"0.2"`·`"1.1"`은 불펜 투수 행에서 보입니다)
 - `previous5`의 `era`/`avg`가 과거로 갈수록 값이 바뀌는가 — 그 경기 성적이 아니라 **그 시점 누적값**입니다
-- `player_pitcher.json`의 `previous5` 마지막 행(8/22 롯데)이 `game_date`·`matchteamname`만 있고 **나머지 전부 `null`** 인가
+- `player_pitcher.json`의 `previous5` 마지막 행(8/22 롯데)이 `game_date`·`matchteamname`만 있고 **나머지 전부 `null`** 인가 — `previous5`는 최근 5경기라 곽빈이 다시 등판하면 이 행이 밀려나 안 보일 수 있습니다(2026-09-23 기준 마지막 등판 9/9). Step 3 테스트는 이 행 모양을 인라인 JSON으로 고정하므로 fixture에서 빠져도 깨지지 않습니다
 - `img_s`·`player_photo`가 `http://`로 오는가 — 그대로 쓰면 Android 기본 설정에서 차단됩니다(`https`로 바꿔 실음)
 
 <div class="callout danger"><span class="t">라이브는 경기 날에만 확인 가능</span>
 진행 중 경기의 <code>state</code>는 <code>i</code>입니다(2026-09-15 18:31 실측). 시작 직후 목록 행은 점수 <code>"0"</code>, <code>inning: "bs1_1"</code>, <code>detail</code>에 볼카운트·주자·현재 투수/타자가 채워지고, 상세의 <code>game_result</code>는 종료 전까지 <code>"1회초"</code> 같은 라벨입니다. <strong>경기가 진행 중일 때</strong> 아래로 직접 한 번 더 보고 <code>fixtures/schedule_day_live.json</code>으로 저장하세요 — Step 3의 라이브 매핑 테스트가 이 파일을 쓰는데, 이닝 라벨이 <code>"N회초"</code>·<code>"N회말"</code> 형태인지만 정규식으로 보므로 <strong>몇 회에 캡처했는지는 상관없습니다</strong>. 진행 중(<code>state:"i"</code>) 행이 하나라도 들어 있기만 하면 됩니다. 경기 시간이 아니라면 이 파일 없이 진행하고 경기일에 다시 저장·재실행하세요.
 <br><br>
-<code>watch -n 30 'wt /live/Schedule_Day/$(date +%Y%m%d) | jq ".data.Schedule_Day[] | {state, inning, home_score, away_score}"'</code>
+<code>while true; do wt /live/Schedule_Day/$(date +%Y%m%d) | jq -c '.data.Schedule_Day[] | {state, inning, home_score, away_score}'; sleep 30; done</code>
+<br>(Ctrl+C로 멈춥니다. <code>watch</code>는 macOS 기본 명령이 아니고, 설치해도 명령을 <code>sh -c</code>로 돌려 셸 함수 <code>wt</code>를 찾지 못합니다 — 위처럼 현재 셸에서 반복합니다.)
 </div>
 
-<div class="checkpoint"><span class="t"></span> <code>fixtures/</code>에 <strong>12개 JSON</strong>(+ 경기일에 <code>schedule_day_live.json</code>)이 저장됐고, 위 목록을 눈으로 확인했으면 완료. 파일 이름은 Step 3의 <code>MapperTest</code>가 <code>load("…")</code>로 그대로 부르므로 바꾸지 마세요(<code>schedule_month.json</code>만 예외 — 위 구장명 <code>jq</code> 확인용입니다). 라이브 파일은 경기 시간에만 받을 수 있는 13번째 파일이라, 없으면 Step 3에서 라이브 매핑 테스트 하나만 경기일로 미루면 됩니다. 이 파일들은 Step 3에서 <code>app/src/test/resources/fixtures/</code>로 옮깁니다.</div>
+<div class="checkpoint"><span class="t"></span> <code>fixtures/</code>에 <strong>12개 JSON</strong>(+ 경기일에 <code>schedule_day_live.json</code>)이 저장됐고, 위 목록을 눈으로 확인했으면 완료. 파일 이름은 Step 3의 <code>MapperTest</code>(<code>load("…")</code>)와 Step 4의 <code>RepositoryTest</code>(<code>fixture("…")</code>)가 그대로 부르므로 바꾸지 마세요(<code>schedule_month.json</code>은 위 구장명 <code>jq</code> 확인과 Step 4의 프리페치 테스트가 씁니다). 라이브 파일은 경기 시간에만 받을 수 있는 13번째 파일이라, 없으면 Step 3에서 라이브 매핑 테스트 하나만 건너뛰고(<code>skipped</code>) 경기일로 미루면 됩니다. 이 파일들은 Step 3에서 <code>app/src/test/resources/fixtures/</code>로 옮깁니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-0">← Step 0</a>

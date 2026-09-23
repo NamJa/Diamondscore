@@ -126,12 +126,15 @@ fun GameDetailScreen(key: GameDetailKey, onBack: () -> Unit) {
     )
     val d by vm.ui.collectAsStateWithLifecycle()
     val status = d?.summary?.status
-    // 라이브만 15초 — Step 6에서 `core/ui`에 만든 LivePolling을 간격만 바꿔 그대로 쓴다(FINAL이 되면 hasLive가 false라 멈춘다)
-    LivePolling(hasLive = status == GameStatus.LIVE, intervalMs = 15_000L) { vm.refreshNow() }
+    val now = rememberMinuteClock()
+    val started = status == GameStatus.SCHEDULED && d?.summary?.startsAt?.isAfter(now) == false   // 시작 시각이 지난 예정 경기
+    // 라이브(와 시작 시각이 지난 예정)만 15초 — Step 6에서 `core/ui`에 만든 LivePolling을 간격만 바꿔 그대로 쓴다(FINAL이 되면 멈춘다)
+    LivePolling(hasLive = status == GameStatus.LIVE || started, intervalMs = 15_000L) { vm.refreshNow() }
     LaunchedEffect(status) {                           // 종료 확정 — §4
         if (status == GameStatus.FINAL) {
-            vm.refreshNow()                            // 최종 점수·R/H/E 확정
-            if (d?.winPitcher == null) { delay(10.minutes); vm.refreshNow() }   // 투수 요약 지연 반영
+            vm.refreshNow()                            // 최종 점수·R/H/E 확정(진입 직후라 init 조회가 도는 중이면 건너뛴다)
+            delay(10.minutes)                          // 투수 요약(end_summary)은 종료 7~8분 뒤에 채워진다
+            if (d?.winPitcher == null) vm.refreshNow() // 10분 뒤에도 비어 있을 때만 — 이미 끝난 경기를 열 때 헛조회하지 않는다
         }
     }
     Scaffold(topBar = { DetailTopBar(onBack) }) { pad ->
@@ -143,7 +146,8 @@ fun GameDetailScreen(key: GameDetailKey, onBack: () -> Unit) {
                     LineScoreTable(detail.summary.away, detail.summary.home, detail.innings,
                         detail.summary.awayRuns, detail.summary.homeRuns,
                         detail.awayHits, detail.homeHits,        // 목업의 H·E 열 — 값이 올 때만 붙는다
-                        detail.awayErrors, detail.homeErrors)
+                        detail.awayErrors, detail.homeErrors,
+                        liveInning = detail.summary.finalInning.takeIf { detail.summary.status == GameStatus.LIVE })   // 진행 중인 회만 라이브 색
                 }
                 LabeledBlock("경기 정보") { InfoTable(detail) }   // 경기장·선발·투수 요약
                 DataNote()  // "볼카운트·라인업·문자중계는 다음 단계"
@@ -248,12 +252,13 @@ fun DataNote() = Row(Modifier.padding(horizontal = 4.dp),
 
 ## 4. 종료 확정 처리
 
-`LIVE → FINAL`(`state: e`) 전환 시 최종 점수와 R/H/E는 상태와 함께 오지만, **승·패·세이브 투수(`end_summary`)는 7~8분 뒤에 채워집니다**(계획서 §2.4 실측 — 그 전엔 `null`). 전환 직후 한 번, 그리고 투수 요약이 비어 있으면 10분 뒤 한 번 더 조회합니다 — §3의 `LaunchedEffect(status)`가 그 코드입니다.
+`LIVE → FINAL`(`state: e`) 전환 시 최종 점수와 R/H/E는 상태와 함께 오지만, **승·패·세이브 투수(`end_summary`)는 7~8분 뒤에 채워집니다**(계획서 §2.4 실측 — 그 전엔 `null`). 전환 직후 한 번, 그리고 **10분 뒤에도** 투수 요약이 비어 있으면 한 번 더 조회합니다 — §3의 `LaunchedEffect(status)`가 그 코드입니다.
 `status`가 키라서 `LIVE → FINAL`로 바뀔 때만 발화하고, 같은 블록이 없으면 승·패·세이브 투수 행은 영영 비어 있습니다.
+비었는지는 **10분을 기다린 뒤에** 봅니다. 이미 끝난 경기를 열면 Room의 `FINAL` 행이 먼저 방출되는데, 그때는 `init`의 상세 조회가 아직 끝나지 않아 투수 요약도 비어 보입니다 — 여기서 바로 판정하면 끝난 경기를 열 때마다 10분 뒤 헛조회가 한 번씩 나갑니다(2026-09-23 실측: 18:09:29 진입 → 18:19:29 같은 요청).
 
 `InfoTable`은 `null` 행을 숨기므로(§3) 투수 요약이 늦게 와도 화면이 깨지지 않고 행이 나중에 나타납니다.
 
-라이브 중에는 화면이 보일 때만 15초 간격으로 `refreshNow()`를 호출합니다 — §3의 `LivePolling(hasLive = …, intervalMs = 15_000L)`이
+라이브 중에는 화면이 보일 때만 15초 간격으로 `refreshNow()`를 호출합니다(시작 시각이 지난 예정 경기도 — 경기 전에 연 상세가 "예정"에 머물지 않게, Step 6 §4와 같은 이유) — §3의 `LivePolling(hasLive = …, intervalMs = 15_000L)`이
 Step 6에서 `core/ui`에 만든(`core/ui/LivePolling.kt`, package `com.diamondscore.core.ui`) 그 컴포저블이고, 간격만 목록(20초)과 다릅니다.
 목록과 상세가 같은 조각을 쓰므로 `feature/games`가 아니라 `core/ui`에 있어야 `feature → feature` 참조가 생기지 않습니다(Step 9 §8 DoD). `onTick`이 `suspend`라서 `refresh()`(즉시 반환하는 `launch`)가 아니라
 `refreshNow()`를 넘겨야 `busy` 가드가 살아 있고, 앞 요청이 끝난 뒤에 다음 15초가 시작됩니다. `FINAL`이 되면 `hasLive`가 `false`가 되어 폴링이 멈춥니다.
@@ -263,7 +268,7 @@ Step 6에서 `core/ui`에 만든(`core/ui/LivePolling.kt`, package `com.diamonds
 
 <div class="checkpoint"><span class="t"></span> 9이닝 경기는 1~9열, 연장 경기는 10·11열이 <strong>추가로</strong> 뜨고 미진행 이닝(9회말 미실시 포함)은 빈칸이면 성공(목업과 동일). 오른쪽 총계는 <strong>R</strong>과, 값이 올 때만 붙는 <strong>H·E</strong>입니다. 취소 경기는 라인스코어가 비고 상단 칩에 "취소"가 보입니다.
 <br><strong>예정 경기</strong>는 이닝 칸이 <strong>비어 있는 것이 정상</strong>입니다 — <code>boxscore</code>가 전부 <code>null</code>이라 <code>parseInnings</code>가 빈 리스트를 주고(Step 3), <code>LineScoreTable</code>은 최소 9열을 보장하므로(Step 5) 1~9열 머리글만 뜨고 칸과 R은 빈칸입니다. "경기 정보"의 경기장·선발 행은 예정 경기에도 채워져 있어야 합니다.
-<br><strong>진행 중 경기</strong>는 진입 시 <code>init { refresh() }</code>가 한 번 도니 진행된 이닝까지 숫자가 차 있어야 합니다. 15초마다 점수가 바뀌고, 홈으로 나가면 폴링이 멈춰야 합니다.</div>
+<br><strong>진행 중 경기</strong>는 진입 시 <code>init { refresh() }</code>가 한 번 도니 진행된 이닝까지 숫자가 차 있어야 합니다. 진행 중인 회의 칸만 라이브 색이고(종료 경기에는 강조가 없습니다), 폰 폭에서도 팀 열과 R·H·E가 보이며 이닝만 가로로 밀립니다. 15초마다 점수가 바뀌고(2026-09-23 실측 간격 14.0~15.2초, 이때 목록 폴링은 멈춥니다), 홈으로 나가면 폴링이 멈춰야 합니다.</div>
 
 <div class="pager">
 <a href="#/labs/step-6">← Step 6</a>

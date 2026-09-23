@@ -145,11 +145,15 @@ fun DiamondScoreApp() {
 ```kotlin
 package com.diamondscore
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -166,20 +170,31 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settings: SettingsViewModel = hiltViewModel()
             val s by settings.ui.collectAsStateWithLifecycle()
+            val dark = when (s.theme) {               // 세그먼트 라벨 → Boolean
+                "라이트" -> false
+                "다크" -> true
+                else -> isSystemInDarkTheme()       // "시스템"
+            }
+            // 상태바·내비바 아이콘을 앱 테마에 맞춘다 — 창 테마(Light)대로 두면 라이트에서 흰 아이콘이 페이퍼 배경에 묻힌다
+            DisposableEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                    navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                )
+                onDispose {}
+            }
             // 폴링 간격은 값으로만 내려보낸다 — feature:games가 feature:settings를 모르게(§2)
             CompositionLocalProvider(LocalPollIntervalMs provides pollIntervalMs(s.interval)) {
-                DiamondScoreTheme(
-                    dark = when (s.theme) {           // 세그먼트 라벨 → Boolean
-                        "라이트" -> false
-                        "다크" -> true
-                        else -> isSystemInDarkTheme()   // "시스템"
-                    }
-                ) { DiamondScoreApp() }
+                DiamondScoreTheme(dark = dark) { DiamondScoreApp() }
             }
         }
     }
 }
 ```
+
+<div class="callout warn"><span class="t">시스템 바 아이콘 색은 앱이 정한다</span>
+<code>targetSdk</code> 36은 edge-to-edge가 강제라 상태바가 앱 위에 겹쳐 그려지고, 아이콘 색은 창 테마(<code>themes.xml</code>의 <code>Theme.Material.Light</code>)나 <code>enableEdgeToEdge()</code>의 기본값(시스템 다크 모드)을 따릅니다. 어느 쪽이든 앱의 테마 설정과 어긋나는 경우가 생깁니다 — 템플릿 상태에선 시스템이 라이트면 다크 앱에 어두운 아이콘이, <code>enableEdgeToEdge()</code>를 뺀 Step 6 이후엔 라이트 앱에 흰 아이콘(<code>#FFFFFF</code> on <code>#FBFAF7</code>)이 그려져 시계·배터리가 안 보였습니다(2026-09-23 실측). 위 <code>DisposableEffect(dark)</code>가 설정이 바뀔 때마다 아이콘 색을 다시 맞춥니다.
+</div>
 
 <div class="callout warn"><span class="t">decorator 2개는 옵션이 아니다</span>
 <code>NavDisplay</code>의 기본값은 <code>rememberSaveableStateHolderNavEntryDecorator()</code> 하나뿐입니다. 여기에 <strong><code>rememberViewModelStoreNavEntryDecorator()</code></strong>를 직접 추가해야:
@@ -226,7 +241,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val s by vm.ui.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { DsIcon(Icons.AutoMirrored.Outlined.ArrowBack) }
+            IconButton(onClick = onBack) { DsIcon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "뒤로 가기") }
             TopBar("설정", accentDot = false)   // 설정 화면은 워드마크 마침표 없음(목업)
         }
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(26.dp)) {
@@ -397,15 +412,22 @@ val LocalPollIntervalMs = staticCompositionLocalOf { 20_000L }
 ```kotlin
 // LivePolling은 Step 6에서 core/ui에 만든 컴포저블 — GamesScreen도 GameDetailScreen도 여기서 가져온다
 LivePolling(
-    hasLive = ui.games.any { it.status == GameStatus.LIVE },
+    hasLive = pollable,                                // Step 6 §3 — LIVE 또는 시작 시각이 지난 예정 경기
     intervalMs = LocalPollIntervalMs.current,          // core/ui
 ) { vm.refreshNow() }
 ```
 
 ## 3. 상태 화면 연결
 
-Step 5에서 만든 `LoadingCards`·`EmptyDay`·`ErrorState`·`StaleBanner`가 모든 화면에서 로딩/빈/오류/
-오프라인을 담당합니다. 각 화면의 `when(ui)` 분기가 목업의 상태 화면과 1:1로 맞는지 점검합니다.
+Step 5에서 만든 `LoadingCards`·`EmptyDay`·`ErrorState`·`StaleBanner` 중 네 상태를 모두 쓰는 곳은 경기 목록(Step 6)뿐입니다.
+각 화면의 `when(ui)` 분기가 목업의 상태 화면과 맞는지 점검하되, 이 랩의 나머지 화면은 오류·재시도 상태가 없다는 것을
+알고 보세요(2026-09-23 비행기 모드 실측, Step 8 §7 콜아웃):
+
+- 팀 상세·선수단 — `Team_Info`는 진입 때 한 번만 받는다. 실패하면 선수단 행·연혁을 숨길 뿐 오류 표시·재시도는 없다.
+- 선수 상세 — 실패하면 `LoadingCards`가 끝나지 않고, 온라인이 돼도 다시 받지 않는다.
+- 순위 — ViewModel `init`의 첫 조회가 실패하면 앱을 다시 켤 때까지 빈 표다.
+
+붙이려면 각 ViewModel이 성공·실패를 상태로 내보내고(`GamesViewModel`의 `Sync`처럼) 화면이 `ErrorState(onRetry)`를 그리면 됩니다 — 이 랩 범위 밖입니다.
 
 ## 4. 적응형 — 태블릿 2-pane
 
@@ -476,15 +498,15 @@ fun DiamondScoreApp() {
         NavDisplay(
             entries = decorated.getValue(tab),
             onBack = { current.removeLastOrNull() },
-            sceneStrategy = listDetail,          // ← 이 한 줄이 2-pane 전부
+            sceneStrategies = listOf(listDetail),   // ← 이 한 줄이 2-pane 전부
             modifier = Modifier.padding(pad),
         )
     }
 }
 ```
 
-<div class="callout tip"><span class="t"><code>sceneStrategy</code>는 단수</span>
-<code>entries = …</code> 오버로드는 <code>sceneStrategy</code>(단수) 하나만 받습니다. 전략을 여러 개 겹치려면(예: 목록-상세 + 바텀시트) <code>backStack = …</code> 오버로드의 <code>sceneStrategies</code>(복수)를 써야 하는데, 그러면 탭별 back stack을 직접 decorate할 수 없습니다. 이 앱은 전략이 하나라 단수로 충분합니다.
+<div class="callout warn"><span class="t"><code>sceneStrategies</code>는 복수 — 단수 <code>sceneStrategy</code>는 컴파일되지 않는다</span>
+Navigation 3 <code>1.1</code>부터는 <code>entries = …</code> 오버로드도 <code>backStack = …</code> 오버로드처럼 <code>sceneStrategies: List&lt;SceneStrategy&lt;T&gt;&gt;</code>를 받습니다. 1.0 시절의 단수 <code>sceneStrategy</code> 오버로드는 바이너리 호환용으로만 남아 숨겨져 있어, <code>sceneStrategy = listDetail</code>로 쓰면 <code>No parameter with name 'sceneStrategy' found</code>로 빌드가 멈춥니다(1.1.7 실측). 전략이 하나여도 <code>listOf(…)</code>로 넘기고, 목록-상세 + 바텀시트처럼 겹칠 때는 이 리스트에 더 넣습니다.
 </div>
 
 <div class="callout tip"><span class="t">왜 코드가 이것뿐인가</span>
@@ -498,7 +520,9 @@ Nav2의 <code>NavigableListDetailPaneScaffold</code>는 별도 navigator와 별�
 // core/ui/DsBottomBar.kt — Step 5 §1의 DsBottomBar 아래에 추가
 @Composable
 fun DsNavRail(current: DsTab, onSelect: (DsTab) -> Unit) = Column(
-    Modifier.fillMaxHeight().width(92.dp).padding(top = 24.dp),
+    Modifier.fillMaxHeight().width(92.dp)
+        .background(MaterialTheme.colorScheme.background)   // Scaffold 밖이라 없으면 창 배경(Light 테마의 흰색)이 비친다
+        .padding(top = 24.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.spacedBy(26.dp),
 ) {
@@ -526,7 +550,7 @@ BoxWithConstraints {
             NavDisplay(
                 entries = decorated.getValue(tab),
                 onBack = { current.removeLastOrNull() },
-                sceneStrategy = listDetail,
+                sceneStrategies = listOf(listDetail),
                 modifier = Modifier.padding(pad),
             )
         }
@@ -542,9 +566,9 @@ BoxWithConstraints {
 `contentDescription`을 넘길 수 있게 연 `DsIcon`은 **Step 5 §6**에서 넣었습니다. 여기서 다시 정의하지 말고,
 기기에서 켜 놓고 점검만 합니다.
 
-- **TalkBack**: 라인스코어가 요약("1회 초 원정 1점")으로 읽히는지, 스코어보드 → 라인스코어 → 정보 순인지.
+- **TalkBack**: 라인스코어가 요약("1회 초 원정 1점")으로 읽히는지, 스코어보드 → 라인스코어 → 정보 순인지. 아이콘만 있는 버튼(날짜 화살표·설정 톱니·뒤로·별)이 "이전 날짜"·"설정"·"뒤로 가기"·"즐겨찾기 추가"처럼 읽히는지(Step 6·8·9 코드가 `contentDescription`을 넘깁니다).
 - **터치 48dp**: 날짜 화살표·별·세그먼트(§2의 `DsSegmented`·§4의 `DsNavRail`에서 이미 맞췄습니다).
-- **글꼴 200%**: 라인스코어가 가로 스크롤로 살아남는지.
+- **글꼴 200%**: 라인스코어가 가로 스크롤로 살아남는지(팀 열·R·H·E는 고정). 순위표는 열 폭이 dp로 고정이라 200%에서 승·패·무·팀명·게임차가 두 줄로 접히고, 1위 행은 게임차 `-`와 연속 `3승`이 붙어 `-3승`처럼 보입니다(2026-09-23 실측 — 정보는 남지만 목업 1.0배 기준 폭입니다). 하단 탭의 "즐겨찾기"도 줄바꿈됩니다.
 - 팀 컬러 바 등 장식은 `contentDescription = null`, 색만으로 승패를 전달하지 않기(텍스트 병행).
 - 로딩 skeleton(`LoadingCards`)이 TalkBack에 읽히지 않는지(계획서 §1.5).
 - 점수 변경 애니메이션이 300ms 이내이고 시스템 "애니메이션 줄이기"를 존중하는지(계획서 §1.5).
@@ -578,6 +602,10 @@ class SettingsUiTest {
 }
 ```
 
+<div class="callout warn"><span class="t">espresso-core 3.7.0이 빠지면 이 테스트가 깨진다</span>
+Compose UI 테스트는 내부에서 Espresso로 기기가 쉬는지 기다립니다. <code>ui-test-junit4</code>가 끌어오는 espresso-core 3.5.0은 API 34+ 기기에서 <code>NoSuchMethodException: android.hardware.input.InputManager.getInstance</code>로 실패하므로, Step 2 §4의 <code>androidTestImplementation(libs.espresso.core)</code>(3.7.0)가 있어야 통과합니다(2026-09-23 API 37 에뮬레이터 실측: 없으면 실패, 넣으면 2/2 통과). Compose 1.12에서 <code>createComposeRule()</code>은 deprecated 경고가 나오지만(<code>junit4.v2</code> 패키지로 이전 권고) 그대로 동작합니다.
+</div>
+
 <div class="callout warn"><span class="t">Hilt 계측 테스트는 범위 밖</span>
 <code>hiltViewModel()</code>을 쓰는 화면(<code>SettingsScreen</code>·<code>GamesScreen</code>)을 통째로 띄우려면 <code>HiltTestApplication</code>을 올리는 커스텀 러너와 <code>kspAndroidTest</code>가 더 필요합니다(Step 2 §4 주석). 그래서 계측 테스트는 <strong>ViewModel을 모르는 컴포저블</strong>만 대상으로 둡니다 — 나머지 접근성 항목은 TalkBack·글꼴 200%를 켜고 손으로 확인하세요.
 </div>
@@ -601,11 +629,13 @@ class SettingsUiTest {
 ## 7. R8 릴리스 검증
 
 ```bash
-./gradlew :app:assembleRelease
+./gradlew :app:assembleRelease     # app/build/outputs/apk/release/app-release.apk
+./gradlew :app:installRelease      # 기기에 설치 — 디버그 빌드와 같은 디버그 키라 그 위에 덮어쓴다
 ```
 
 <div class="callout danger"><span class="t">직렬화 클래스 생존 확인</span>
 R8이 kotlinx.serialization DTO를 지우면 릴리스에서만 파싱 크래시가 납니다. 릴리스 APK를 <strong>실제로 실행</strong>해 경기 목록이 뜨는지 확인하세요. 문제 시 <code>proguard-rules.pro</code>에 DTO keep 규칙 추가.
+<br>서명이 없으면 설치부터 안 됩니다 — Step 2 §2의 <code>signingConfig</code> 줄이 없으면 결과물이 <code>app-release-unsigned.apk</code>이고 <code>adb install</code>은 <code>INSTALL_PARSE_FAILED_NO_CERTIFICATES</code>로 거절합니다. 2026-09-23 실측에서는 keep 규칙 없이(kotlinx.serialization·Retrofit에 들어 있는 규칙만으로) 모든 화면, 프리페치 워커, 프로세스를 죽였다 살렸을 때 탭·back stack 복원(<code>NavKey</code> 직렬화)까지 정상이었습니다.
 </div>
 
 ## 8. 완성 점검 (Definition of Done)

@@ -8,7 +8,7 @@
 
 1. [developer.android.com/studio](https://developer.android.com/studio) 에서 최신 Android Studio를 내려받아 설치합니다.
 2. 첫 실행 시 **SDK 설정 마법사**가 뜹니다. 그대로 진행하되, 다음이 포함됐는지 확인합니다.
-   - **Android SDK Platform 36** (Android 16)
+   - **Android SDK Platform 37** (Android 17) — 이 프로젝트의 `compileSdk`입니다. `targetSdk`는 36이지만 Step 2의 라이브러리들이 37로 컴파일하기를 요구합니다(Step 2 §2)
    - **Android SDK Build-Tools**
    - **Android Emulator** + **Android SDK Platform-Tools**
 
@@ -35,7 +35,7 @@ adb version
 
 ## 3. 실행할 기기 준비 (둘 중 하나)
 
-**A. 에뮬레이터** — Android Studio → **Device Manager** → `Create Device` → Pixel 계열 선택 → 시스템 이미지 **API 36** 다운로드 → Finish → ▶로 부팅.
+**A. 에뮬레이터** — Android Studio → **Device Manager** → `Create Device` → Pixel 계열 선택 → 시스템 이미지 **API 36 이상** 다운로드(이 튜토리얼은 API 37 에뮬레이터로 검증했습니다) → Finish → ▶로 부팅.
 
 **B. 실기기** — USB 연결 후 기기에서 개발자 옵션·USB 디버깅을 켭니다(설정 → 휴대전화 정보 → 빌드번호 7번 탭 → 개발자 옵션 → USB 디버깅).
 
@@ -54,7 +54,7 @@ adb devices          # 연결 확인
 <div class="checkpoint"><span class="t"></span> 기기에 "Hello Android!" 화면이 뜨면 환경 준비 완료. 이 Sandbox 프로젝트는 리허설용이므로 지워도 됩니다 — 실제 프로젝트는 <a href="#/labs/step-2">Step 2</a>에서 새로 만듭니다.</div>
 
 <div class="callout ok"><span class="t">정리</span>
-Android Studio·SDK 36·adb·실행 기기가 준비됐습니다. 이제 코드를 쓸 수 있는 상태입니다.
+Android Studio·SDK 37·adb·실행 기기가 준비됐습니다. 이제 코드를 쓸 수 있는 상태입니다.
 </div>
 
 <div class="pager">

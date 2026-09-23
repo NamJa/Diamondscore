@@ -151,7 +151,7 @@ class TeamsRepository @Inject constructor(
 ```
 
 <div class="callout warn"><span class="t">요청이 2회인 건 실수가 아니다</span>
-<code>api.teamInfo(id, 0)</code>만 부르면 <strong>투수만</strong> 옵니다(두산 43명). 타자 47명은 <code>player_position=1</code>이 있어야 옵니다. 두 응답 모두 <code>team_detail</code>(명칭·구장·감독·연혁)을 똑같이 싣고 있으므로 먼저 도착한 쪽을 씁니다. 응답은 각 8 KB, 서버 캐시 1시간이고 팀 화면에서만 부르므로 OkHttp <code>Cache</code>까지 붙일 필요는 없습니다 — 화면을 오갈 때 반복 호출이 거슬리면 그때 넣으세요.
+<code>api.teamInfo(id, 0)</code>만 부르면 <strong>투수만</strong> 옵니다(두산 43명). 타자 47명은 <code>player_position=1</code>이 있어야 옵니다. 두 응답 모두 <code>team_detail</code>(명칭·구장·감독·연혁)을 똑같이 싣고 있으므로 먼저 도착한 쪽을 씁니다. 응답은 각 8 KB, 서버 캐시 1시간이고 팀 화면에서만 부르므로 OkHttp <code>Cache</code>까지 붙일 필요는 없습니다 — 화면을 오갈 때 반복 호출이 거슬리면 그때 넣으세요. 모델은 하나지만 화면마다 <code>observeTeam</code>을 새로 수집하므로, 팀 상세 → 선수단으로 넘어가면 2회가 <strong>한 번 더</strong> 나갑니다(2026-09-23 로그로 확인).
 </div>
 
 ### 2.2 헤더
@@ -170,9 +170,10 @@ fun TeamHeader(team: TeamRef, nameEn: String?, record: String,
         Column(Modifier.padding(bottom = 18.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween) {
-                IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft) }
+                IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft, contentDescription = "뒤로 가기") }
                 IconButton(onClick = onFav) {
                     DsIcon(if (isFav) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (isFav) "즐겨찾기 해제" else "즐겨찾기 추가",
                         tint = if (isFav) DsColors.gold else DsColors.muted2)
                 }
             }
@@ -290,7 +291,8 @@ fun TeamDetailScreen(key: TeamDetailKey, onGame: (Long) -> Unit, onRoster: (Long
             item { KeyValueRow("홈구장", d.stadium) }
             item { KeyValueRow("감독", d.manager) }
             item {
-                KeyValueRow("선수단", "투수 ${d.pitcherCount} · 타자 ${d.batterCount} ›",
+                // 선수단을 못 받았으면(오프라인) "투수 0 · 타자 0"이 아니라 행을 숨긴다 — 표시 원칙(null ≠ 0)
+                KeyValueRow("선수단", "투수 ${d.pitcherCount} · 타자 ${d.batterCount} ›".takeIf { d.pitcherCount + d.batterCount > 0 },
                     valueColor = MaterialTheme.colorScheme.primary,     // 이동은 앱 기능 = 액센트
                     onClick = { onRoster(d.team.id) })
             }
@@ -305,7 +307,7 @@ fun TeamDetailScreen(key: TeamDetailKey, onGame: (Long) -> Unit, onRoster: (Long
 ```
 
 <div class="callout danger"><span class="t">예정 경기에 선발 투수를 그리지 마세요</span>
-<code>Schedule_Month</code> 행에는 <code>home_pitcher</code>·<code>away_pitcher</code>가 <strong>아예 없습니다</strong>(<code>game_timestamp</code>도 없습니다). 선발은 <code>Schedule_Day</code>에만 있으므로, 프리페치로만 채워진 미래 경기의 <code>homeStarter</code>는 <code>null</code>입니다. <code>GameCard</code>는 <code>null</code>을 그리지 않으니 그대로 두면 되고, 당일 <code>refreshDay()</code>가 돌면 같은 행에 선발이 덮어써집니다. 여기서 "선발 미정" 같은 문자열을 만들어 넣으면 표시 원칙 위반입니다.
+<code>Schedule_Month</code> 행에는 <code>home_pitcher</code>·<code>away_pitcher</code>가 <strong>아예 없습니다</strong>(<code>game_timestamp</code>·<code>inning</code>도 없습니다). 선발은 <code>Schedule_Day</code>에만 있으므로, 프리페치로만 채워진 미래 경기의 <code>homeStarter</code>는 <code>null</code>입니다. <code>GameCard</code>는 <code>null</code>을 그리지 않으니 그대로 두면 되고, 당일 <code>refreshDay()</code>가 돌면 같은 행에 선발이 덮어써집니다. 여기서 "선발 미정" 같은 문자열을 만들어 넣으면 표시 원칙 위반입니다.
 </div>
 
 <div class="callout tip"><span class="t">전적 문자열은 순위 캐시에서</span>
@@ -314,7 +316,7 @@ fun TeamDetailScreen(key: TeamDetailKey, onGame: (Long) -> Unit, onRoster: (Long
 
 ## 3. 팀 정보 — 선수단과 연혁
 
-목업의 두 번째 팀 화면입니다. 위 `observeTeam`을 **그대로** 재사용하므로 새 네트워크 코드가 없습니다.
+목업의 두 번째 팀 화면입니다. 위 `observeTeam`을 **그대로** 재사용하므로 새 네트워크 코드가 없습니다(요청은 이 화면에서 다시 나갑니다 — §2.1 콜아웃).
 
 `feature/teams/TeamRosterScreen.kt`:
 
@@ -359,13 +361,15 @@ fun TeamRosterScreen(key: TeamRosterKey, onPlayer: (PlayerDetailKey) -> Unit, on
                 RosterRow(p, t.team.id, dim = true) { onPlayer(PlayerDetailKey(p.id, t.team.id)) }
             }
 
-            item { SectionLabel("구단 연혁") }
-            items(t.history) { e -> HistoryRow(e, t.team.id) }
-            item {
-                // 서버는 우승 횟수를 주지 않는다 — 연혁 문자열을 세는 앱 규칙이다
-                val titles = t.history.count { "한국시리즈 우승" in it.text }
-                Text("우승 ${titles}회 · 전체 ${t.history.size}건", Modifier.padding(16.dp),
-                    style = Display.copy(fontSize = 14.sp), color = DsColors.live)
+            if (t.history.isNotEmpty()) {                   // 못 받았으면 "우승 0회 · 전체 0건"을 지어내지 않는다
+                item { SectionLabel("구단 연혁") }
+                items(t.history) { e -> HistoryRow(e, t.team.id) }
+                item {
+                    // 서버는 우승 횟수를 주지 않는다 — 연혁 문자열을 세는 앱 규칙이다
+                    val titles = t.history.count { "한국시리즈 우승" in it.text }
+                    Text("우승 ${titles}회 · 전체 ${t.history.size}건", Modifier.padding(16.dp),
+                        style = Display.copy(fontSize = 14.sp), color = DsColors.live)
+                }
             }
             item { Caption("선수단은 Team_Info를 투수·타자 두 번 불러 받습니다. 목록에는 등번호·이름·사진뿐이라 포수·내야수 구분은 선수 상세에만 있습니다.") }
         }
@@ -385,7 +389,7 @@ private fun RosterHeader(t: TeamDetail, onBack: () -> Unit) {
         Column(Modifier.padding(bottom = 14.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft) }
+                IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft, contentDescription = "뒤로 가기") }
                 Text("팀 정보", style = MaterialTheme.typography.titleMedium, color = DsColors.muted2)
             }
             Row(Modifier.padding(start = 20.dp), horizontalArrangement = Arrangement.spacedBy(15.dp),
@@ -515,7 +519,7 @@ private fun PlayerHeader(p: PlayerProfile, teamId: Long, onBack: () -> Unit) {
         Column(Modifier.padding(bottom = 16.dp)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft) }
+                IconButton(onClick = onBack) { DsIcon(Icons.Outlined.ChevronLeft, contentDescription = "뒤로 가기") }
                 Text("선수 정보", style = MaterialTheme.typography.titleMedium, color = DsColors.muted2)
             }
             Row(Modifier.padding(start = 20.dp), horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -557,7 +561,7 @@ private fun ProfileRows(p: PlayerProfile) {
 private fun BattingBlocks(r: PlayerRecord.Batting) {
     val total = r.months.lastOrNull { it.month == null }      // 합계 행 = month null (서버의 "13")
     StatTiles(listOf(
-        (total?.avg ?: "-") to "타율",
+        (total?.avg?.removePrefix("0") ?: "-") to "타율",          // 서버는 "0.253" — 표기는 순위 승률처럼 ".253"
         (total?.homeRuns?.toString() ?: "-") to "홈런",
         (total?.rbi?.toString() ?: "-") to "타점",
         (total?.hits?.toString() ?: "-") to "안타",
@@ -570,7 +574,7 @@ private fun BattingBlocks(r: PlayerRecord.Batting) {
         weights = listOf(.8f, 1.2f, 1f, 1f, 1f, 1f, 1f),
         rows = r.months.map { m ->
             StatRow(
-                listOf(m.month?.toString() ?: "합계", m.avg, m.games?.toString(), m.atBats?.toString(),
+                listOf(m.month?.let { "${it}월" } ?: "합계", m.avg.removePrefix("0"), m.games?.toString(), m.atBats?.toString(),
                        m.hits?.toString(), m.homeRuns?.toString(), m.rbi?.toString()),
                 emphasized = m.month == null,
             )
@@ -585,7 +589,7 @@ private fun BattingBlocks(r: PlayerRecord.Batting) {
             StatRow(listOf(
                 g.date?.format(shortDate), g.opponent, g.order,
                 g.atBats?.let { "$it-${g.hits ?: 0}" },
-                g.homeRuns?.toString(), g.rbi?.toString(), g.cumulativeAvg))
+                g.homeRuns?.toString(), g.rbi?.toString(), g.cumulativeAvg?.removePrefix("0")))
         },
     )
     Caption("최근 경기의 타율은 그 경기 성적이 아니라 그 시점 누적값입니다.")
@@ -608,7 +612,7 @@ private fun PitchingBlocks(r: PlayerRecord.Pitching) {
         weights = listOf(.8f, 1.2f, .7f, .7f, .7f, .7f, 1.1f, .9f),
         rows = r.months.map { m ->
             StatRow(
-                listOf(m.month?.toString() ?: "합계", m.era, m.wins?.toString(), m.losses?.toString(),
+                listOf(m.month?.let { "${it}월" } ?: "합계", m.era, m.wins?.toString(), m.losses?.toString(),
                        m.saves?.toString(), m.holds?.toString(), m.innings, m.strikeOuts?.toString()),
                 emphasized = m.month == null,
             )
@@ -709,7 +713,7 @@ fun FavoritesScreen(onTeam: (Long) -> Unit, onSettings: () -> Unit) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // 설정 진입점은 경기 목록과 즐겨찾기 두 곳입니다 (Step 9에서 SettingsKey로 연결)
         TopBar("즐겨찾기", trailing = {
-            IconButton(onClick = onSettings) { DsIcon(Icons.Outlined.Settings, size = 22.dp) }
+            IconButton(onClick = onSettings) { DsIcon(Icons.Outlined.Settings, contentDescription = "설정", size = 22.dp) }
         })
         if (teams.isEmpty()) CenterColumn {
             DsIcon(Icons.Outlined.StarBorder, size = 52.dp, tint = DsColors.muted2)
@@ -750,6 +754,10 @@ private fun FavoriteTeamCard(team: TeamRef, onClick: () -> Unit) = Surface(
 
 ## 7. 실행 확인
 
+<div class="callout warn"><span class="t">오프라인에서 처음 여는 팀·선수 화면</span>
+비행기 모드에서 한 번도 안 연 팀을 열면(2026-09-23 실측) 팀 상세는 <strong>선수단 행</strong>을, 선수단 화면은 <strong>연혁 영역</strong>을 숨깁니다 — 위 코드가 "투수 0 · 타자 0 ›"나 "우승 0회 · 전체 0건"을 지어내지 않게 막아 둔 부분입니다. 오류·재시도 상태는 없습니다: <code>Team_Info</code>는 화면에 들어올 때 한 번만 받고, 선수 상세는 실패하면 "불러오는 중"이 끝나지 않으며 온라인이 돼도 다시 받지 않고, 순위는 ViewModel <code>init</code>의 첫 조회가 실패하면 앱을 다시 켤 때까지 빈 표입니다. 이 셋은 이 랩 범위 밖입니다(Step 9 §3).
+</div>
+
 내비게이션은 아직 없습니다 — <code>NavDisplay</code> 배선은 Step 9 §1에서 처음 생깁니다.
 그때까지는 Step 6 §6처럼 `MainActivity`의 `setContent`에 화면 하나를 임시로 끼워 바꿔 가며 확인합니다.
 콜백은 `{}`로 비우고, 키는 손으로 넣습니다(두산 316, KIA 320).
@@ -770,7 +778,7 @@ FavoritesScreen(onTeam = {}, onSettings = {})
 <li><code>TeamDetailScreen</code>: 컬러 헤더·구단 정보·<strong>선수단 투수 nn · 타자 nn ›</strong>·최근/다음 경기가 뜸</li>
 <li><code>TeamRosterScreen</code>: 투수/타자 탭 전환, 육성선수 구분선</li>
 <li><code>PlayerDetailScreen</code>: <strong>타자는 타율·홈런·타점 표, 투수는 ERA·승·이닝·삼진 표</strong>가 뜨고 섞이지 않음</li>
-<li>월별 표의 마지막 행이 <code>13</code>이 아니라 <strong>합계</strong>로 강조돼 있음</li>
+<li>월별 표의 마지막 행이 <code>13</code>이 아니라 <strong>합계</strong>로 강조돼 있음 — 월은 <code>4월</code>, 타율은 서버의 <code>0.253</code>이 아니라 <code>.253</code></li>
 <li>기록이 없는 경기 행이 <code>0</code>이 아니라 <code>—</code>로 보임 (곽빈 8/22)</li>
 <li>팀 상세에서 별을 누르면 채워진 별로 바뀌고, <code>FavoritesScreen</code>으로 바꿔 끼우면 <strong>내 구단</strong>에 그 팀이 있음 (다시 누르면 빠짐)</li>
 <li>키를 <strong>두산(316, 네이비)과 KIA(320, 레드)로 바꿔 끼워</strong> 팀 색만 바뀌고 링크·대표 기록은 레드로 유지되는지</li>
