@@ -84,3 +84,6 @@
 
 /* 단계 이동 pager */
 .pager { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2rem; padding-top: 1.2rem; border-top: 1px solid #eee; }
+
+/* 별첨(Compose API 사용 목적) h2에는 STEP 배지를 붙이지 않는다 */
+.markdown-section:has(.chips) h2[id^="별첨"]::before { content: none; }

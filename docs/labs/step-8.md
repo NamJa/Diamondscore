@@ -786,6 +786,50 @@ FavoritesScreen(onTeam = {}, onSettings = {})
 </ul>
 목업의 순위·팀 상세·팀 정보·선수 정보와 대조하세요. 화면 <strong>사이의 이동과 뒤로 가기</strong>는 Step 9 §8의 완성 점검에서 확인합니다.</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 순위·팀·선수·즐겨찾기 화면을 Step 5 컴포넌트로 조립합니다. 새로 나오는 API는 적고, 대부분 앞 Step의 쓰임을 반복합니다.
+
+**상태**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `rememberSaveable { mutableStateOf(true) }` | 선수단 화면의 투수/타자 탭 선택을 기억한다. 화면 회전·프로세스 재생성 뒤에도 유지되고, ViewModel에 둘 필요가 없는 순수 UI 상태다 |
+| `var … by` (`MutableState` 위임) | `pitching = it`처럼 탭 전환을 대입 한 줄로 쓴다 |
+| `hiltViewModel()` / `hiltViewModel<VM, Factory>(creationCallback)` | 순위·팀 목록·즐겨찾기는 일반, 팀 상세·선수단·선수 상세는 nav 키를 받는 assisted 버전 |
+| `collectAsStateWithLifecycle()` | 각 화면의 Room `Flow` 기반 `StateFlow`를 수집한다 |
+
+**리스트·스크롤**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `LazyColumn` | 순위·팀 목록·즐겨찾기·팀 상세·선수단 — 헤더와 행을 한 스크롤로 잇는다 |
+| `item(key)` / `items(list, key = { it.id })` | 헤더·진출선(`item("po")`)·육성선수 구분선(`item("dev")`)은 `item`, 행은 `items`. 안정 키로 갱신 때 행을 재사용한다(선수는 등번호가 겹치므로 `player_info_seq`가 키) |
+| `Modifier.verticalScroll(rememberScrollState())` | 선수 상세 화면의 헤더·기록 타일·기록 표를 일반 세로 스크롤로 잇는다 |
+
+**그래픽·이미지**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `Brush.radialGradient` + `Modifier.matchParentSize()` | 팀 상세·선수단·선수 헤더 뒤에 팀 색 방사형 글로우를 헤더와 같은 크기로 깐다 |
+| `Box` + `clip(CircleShape)` + `background` + `border` | 팀 엠블럼 원, 즐겨찾기 카드의 팀 원 |
+| `AsyncImage(model, error = …)` (Coil) | 팀 엠블럼 이미지를 불러오고, 실패하면 `error`의 대체 그림을 보인다 |
+| `rememberVectorPainter(Icons.Outlined.Shield)` | `ImageVector`를 Coil이 받는 `Painter`로 바꿔 엠블럼 실패 시 방패 아이콘을 그린다 |
+| `Color.copy(alpha)` / `Color.Transparent` | 글로우의 페이드아웃, 비선택 칩의 투명 배경 |
+
+**컴포넌트·Modifier**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `Surface(onClick, shape, color, border)` | 선수단 투수/타자 탭 칩(`RosterChip`), 즐겨찾기 팀 카드 |
+| `BorderStroke` | 비선택 칩·즐겨찾기 카드의 1dp 외곽선 |
+| `Modifier.clickable` / `Modifier.then(…)` | 행 탭으로 상세 이동. `then(if (onClick != null) … else Modifier)`로 클릭 가능 여부를 조건부로 붙인다 |
+| `IconButton` | 뒤로 가기, 팀 상세의 즐겨찾기 별 토글, 즐겨찾기 화면의 설정 톱니 |
+| `HorizontalDivider` / `Spacer` | 행 헤어라인과 간격 |
+| `Text` (`TextAlign`, `FontWeight`) | 기록 표·프로필 행·연혁 문자열 |
+| `Row` / `Column` / `Box` + `Modifier.width/height/size/weight/padding` | 팀 컬러 바(4×26dp), 키-값 행, 통계 타일 배치 |
+
 <div class="pager">
 <a href="#/labs/step-7">← Step 7</a>
 <a href="#/labs/step-9">Step 9 · 마감·릴리스 →</a>

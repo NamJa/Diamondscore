@@ -57,6 +57,11 @@ adb devices          # 연결 확인
 Android Studio·SDK 37·adb·실행 기기가 준비됐습니다. 이제 코드를 쓸 수 있는 상태입니다.
 </div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 개발 환경(Android Studio·SDK·adb·기기)만 준비하므로 **Jetpack Compose API가 등장하지 않습니다.** 첫 Compose 코드는 Step 2의 디자인 시스템(`DiamondScoreTheme`)입니다.
+
 <div class="pager">
 <a href="#/">← 소개</a>
 <a href="#/labs/step-1">Step 1 · API 스파이크 →</a>

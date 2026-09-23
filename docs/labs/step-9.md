@@ -664,6 +664,58 @@ R8이 kotlinx.serialization DTO를 지우면 릴리스에서만 파싱 크래시
 목업의 모든 화면을 데이터로 살아 움직이게 만들었습니다. 확장은 P1(볼카운트·문자중계·라인업·개인 순위 — 같은 API의 <code>detail</code>·<code>Live_comment</code>·<code>lineup</code>·<code>Sector_Rank</code>)을 붙이거나, 공개 배포를 위해 <a href="#/IMPLEMENTATION_PLAN_KO">전체 계획서</a> §13(BFF 전환)을 참고하세요.
 </div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 화면을 **Navigation 3**로 잇고, 설정·태블릿 2-pane·UI 테스트로 마감합니다. 내비게이션과 테스트 API가 여기서 처음 나옵니다.
+
+**Navigation 3**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `rememberNavBackStack(root)` | 탭마다 back stack을 하나씩 만든다. `NavKey` 직렬화로 프로세스 재생성 뒤에도 스택이 살아난다 |
+| `entryProvider { entry<Key> { key -> … } }` | 키 타입 → 화면 컴포저블 매핑(`dsEntryProvider`). 화면끼리 서로 모르고 `(Long) -> Unit` 콜백을 여기서 `stack.add(Key)`로 바꾼다 |
+| `rememberDecoratedNavEntries(backStack, entryDecorators, entryProvider)` | 4개 탭 스택을 모두 매 컴포지션에서 decorate해, 안 보이는 탭의 ViewModel·스크롤 위치도 유지한다 |
+| `rememberSaveableStateHolderNavEntryDecorator()` | 각 엔트리의 `rememberSaveable` 상태(스크롤·탭 칩)를 엔트리 단위로 저장한다 |
+| `rememberViewModelStoreNavEntryDecorator()` | 엔트리마다 `ViewModelStore`를 줘서 `hiltViewModel()`이 화면별로 생기고, 엔트리가 pop되면 정리되게 한다 |
+| `NavDisplay(entries, onBack, sceneStrategies, modifier)` | 현재 탭의 엔트리를 그리고 시스템 뒤로 가기를 `removeLastOrNull()`로 처리한다. 1.1.x는 복수형 `sceneStrategies = listOf(…)`만 컴파일된다 |
+| `NavKey` / `NavEntry` / `NavBackStack` | 목적지 타입, 엔트리, 스택 타입 |
+| `ListDetailSceneStrategy.listPane()` / `detailPane()` | 엔트리 `metadata`로 목록·상세 역할을 표시한다 |
+| `rememberListDetailSceneStrategy<NavKey>()` | 넓은 화면에서 list+detail 엔트리를 2-pane으로 나란히 그리는 전략. `@OptIn(ExperimentalMaterial3AdaptiveApi::class)` 필요 |
+
+**상태·CompositionLocal·사이드 이펙트**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `rememberSaveable { mutableStateOf(DsTab.GAMES) }` | 현재 탭을 회전·재생성 뒤에도 유지한다 |
+| `staticCompositionLocalOf { 20_000L }` | `LocalPollIntervalMs` — 설정의 폴링 간격을 값으로만 내려보내 `feature:games`가 `feature:settings`를 모르게 한다 |
+| `CompositionLocalProvider(LocalPollIntervalMs provides …)` | `MainActivity`에서 설정값을 트리 전체에 공급하고, 목록·상세의 `LivePolling`이 `.current`로 읽는다 |
+| `isSystemInDarkTheme()` | 테마 설정이 "시스템"일 때 기기 다크 모드를 따른다 |
+| `DisposableEffect(dark) { …; onDispose {} }` | 테마가 바뀔 때마다 `enableEdgeToEdge(SystemBarStyle.auto(…) { dark })`를 다시 불러 상태바·내비바 아이콘 색을 앱 테마에 맞춘다. 되돌릴 정리 작업이 없어 `onDispose`는 비어 있다 |
+| `BackHandler(enabled = …)` | 탭 루트에서 뒤로 가기를 누르면 앱을 끝내지 않고 경기 탭으로 돌아가게 가로챈다 |
+| `hiltViewModel()` / `collectAsStateWithLifecycle()` | `SettingsViewModel`의 DataStore 설정을 액티비티·설정 화면에서 수집한다 |
+| `setContent { … }` | 루트를 `DiamondScoreTheme { DiamondScoreApp() }`로 교체한다 |
+
+**레이아웃·컴포넌트**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `Scaffold(bottomBar = …) { pad -> }` | 하단 탭 바를 고정하고 `NavDisplay`에 `Modifier.padding(pad)`를 넘긴다. 이 Step부터 배경·글자색도 `Scaffold`가 공급한다 |
+| `BoxWithConstraints { maxWidth }` | 폭이 600dp 이상이면 하단 바 대신 `DsNavRail`(세로 레일)을 보인다 |
+| `Modifier.fillMaxHeight().width(92.dp)` | 내비 레일의 세로 전체·고정 폭 |
+| `Switch(checked, onCheckedChange = null, enabled = false)` | "준비 중"인 알림 설정을 비활성 스위치로 보여 준다 |
+| `Box` + `clickable` + `heightIn(min = 48.dp)` | `DsSegmented` 세그먼트 버튼 — 48dp 터치 타깃, 선택 칸만 `primary` 배경 |
+| `IconButton` + `Icons.AutoMirrored.Outlined.ArrowBack` | 설정 화면 뒤로 가기(RTL에서 자동 반전되는 아이콘) |
+| `Text` / `Row` / `Column` / `clip` / `border` / `RoundedCornerShape` | 설정 그룹·행·링크, 세그먼트 컨테이너의 둥근 테두리 |
+
+**UI 테스트**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `createComposeRule()` | 액티비티 없이 컴포저블 하나를 띄우는 테스트 룰 |
+| `compose.setContent { … }` | 테스트 대상 `DsSegmented`를 테마와 함께 그린다 |
+| `onNodeWithText("1분")` / `performClick()` | 텍스트로 노드를 찾아 클릭하고, 콜백으로 선택값이 바뀌는지 검증한다 |
+
 <div class="pager">
 <a href="#/labs/step-8">← Step 8</a>
 <a href="#/">홈으로 ↑</a>

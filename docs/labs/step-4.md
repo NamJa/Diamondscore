@@ -518,6 +518,11 @@ class RepositoryTest {
 
 <div class="checkpoint"><span class="t"></span> 테스트 5개가 초록불이고, 앱을 한 번 실행해 프리페치가 돌게 한 뒤 <strong>비행기 모드</strong>로 바꿔도 과거/미래 날짜의 경기가 Room에 남아 있으면 성공(아직 화면은 없으니 App Inspection의 Database Inspector로 <code>games</code> 테이블을 봅니다 — 2026-09-23 실측 782행, 3/28~10/7, 시범경기·WBC 없음). logcat에 <code>WM-WorkerWrapper: Worker result SUCCESS … PrefetchWorker</code>가 찍혔다면 <strong>계획서 <code>DS-001</code>(기기에서 <code>code:"00"</code>)도 통과</strong>입니다 — 워커는 응답이 하나라도 <code>"00"</code>이 아니면 <code>retry</code>로 끝납니다.</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step의 코드는 Room·Repository·WorkManager(`data` 레이어)뿐이라 **Jetpack Compose API가 등장하지 않습니다.** `@Composable`은 `DiamondScoreApplication` 이름을 정한 이유를 적은 주석에만 나옵니다.
+
 <div class="pager">
 <a href="#/labs/step-3">← Step 3</a>
 <a href="#/labs/step-5">Step 5 · 공통 컴포넌트 →</a>

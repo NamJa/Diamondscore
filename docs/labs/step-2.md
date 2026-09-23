@@ -600,6 +600,42 @@ M3의 <code>MaterialTheme</code>은 색 스킴만 깔고 기본 글자색(<code>
 
 <div class="checkpoint"><span class="t"></span> <code>BUILD SUCCESSFUL</code>이 뜨고, ▶로 실행 시 배경이 <code>#07080B</code> 근블랙으로 칠해지면 디자인 시스템까지 완료. (컴포넌트는 Step 5에서 만듭니다) 템플릿 <code>MainActivity</code>의 <code>enableEdgeToEdge()</code>는 시스템 다크 모드를 따르므로, 시스템이 라이트면 이 시점엔 상태바 아이콘이 어둡게 그려져 잘 안 보입니다 — 앱 테마에 맞추는 코드는 Step 9 §1에서 넣습니다.</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 화면이 아니라 **디자인 시스템**(색·타이포·테마)과 내비게이션 키를 만듭니다. 여기서 정한 값을 Step 5~9의 모든 컴포저블이 읽습니다.
+
+**테마·CompositionLocal**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `MaterialTheme(colorScheme, typography, content)` | `DiamondScoreTheme` 안에서 앱 전체에 색 스킴(`DsDarkColors`/`DsLightColors`)과 `DsTypography`를 깐다. 이후 화면은 `MaterialTheme.colorScheme.*`·`MaterialTheme.typography.*`로 읽는다 |
+| `darkColorScheme()` / `lightColorScheme()` | 목업의 다크(근블랙 `#07080B`)·라이트(페이퍼 `#FBFAF7`) 팔레트를 M3 역할(`background`·`surface`·`primary`…)에 매핑한다 |
+| `staticCompositionLocalOf { … }` | M3 스킴에 없는 색(골드·승/패·오프라인 배너)을 담는 `LocalDsExtras`를 만든다. 테마 전환 때만 바뀌므로 읽는 쪽을 추적하지 않는 `static` 버전을 쓴다 |
+| `CompositionLocalProvider(… provides …)` | `DiamondScoreTheme`에서 `LocalDsExtras`와 `LocalContentColor`에 다크/라이트 값을 공급한다 |
+| `LocalContentColor` | 기본 글자·아이콘 색. M3 `MaterialTheme`은 이 값을 주지 않으므로(`Surface`·`Scaffold`만 준다) `onBackground`를 직접 공급해, 색을 적지 않은 `Text`·`Icon`이 다크에서 검정으로 사라지지 않게 한다 |
+| `@Composable` | `DiamondScoreTheme`, `teamTint()`, `DsColors`의 getter를 컴포지션 안에서만 부를 수 있게 표시한다(`CompositionLocal.current`를 읽으려면 필요) |
+| `@ReadOnlyComposable` | `DsColors.live`·`teamTint()`처럼 값을 **읽기만** 하는 컴포저블 getter에 붙여, 그룹 생성 비용 없이 호출되게 한다 |
+
+**색·타이포**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `Color(0xFF…)` | 팔레트 상수와 구단 컬러(`teamColor`)를 정의한다. 구단 컬러는 `core/designsystem`에만 두어 `data`가 Compose에 의존하지 않게 한다 |
+| `Color.luminance()` | `teamTint()`가 현재 배경이 어두운지(`< 0.5f`) 판별해 팀 색을 밝히거나 누를 방향을 정한다 |
+| `Color.toArgb()` | 팀 색을 `android.graphics.Color.colorToHSV`에 넘기려 ARGB `Int`로 바꾼다 |
+| `Typography().copy(…)` | M3 기본 타입 스케일에서 뒤 Step이 실제로 쓰는 스타일(`titleMedium`·`bodyLarge`·`labelSmall`…)만 Archivo로 덮는다 |
+| `TextStyle` | 스코어·섹션 헤더용 `Display`(Bebas)와 표 숫자용 `ScoreNumber`(등폭 `tnum`)를 정의한다 |
+| `GoogleFont.Provider` / `GoogleFont` / `Font` / `FontFamily` | Bebas Neue·Archivo를 APK에 넣지 않고 Google Play 서비스에서 내려받아 `FontFamily`로 묶는다 |
+| `FontWeight` | 같은 패밀리에서 Normal·Medium·Bold 굵기를 등록·선택한다 |
+| `em` | `letterSpacing = 0.02.em`처럼 글자 크기에 비례하는 자간을 준다 |
+
+**내비게이션**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `NavKey` (Navigation 3 runtime) | 화면 목적지(`GamesKey`, `GameDetailKey(gameId)` …)를 `@Serializable` 타입으로 선언한다. Compose UI를 모르는 인터페이스라 `core/navigation`에 둘 수 있고, Step 9의 `rememberNavBackStack`이 이 직렬화로 back stack을 보존한다 |
+
 <div class="pager">
 <a href="#/labs/step-1">← Step 1</a>
 <a href="#/labs/step-3">Step 3 · 네트워크·매핑 →</a>

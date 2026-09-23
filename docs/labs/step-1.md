@@ -131,6 +131,11 @@ jq '.data.player_info | {pos: .player_detail.c_position, month: .record.month[-1
 
 <div class="checkpoint"><span class="t"></span> <code>fixtures/</code>에 <strong>12개 JSON</strong>(+ 경기일에 <code>schedule_day_live.json</code>)이 저장됐고, 위 목록을 눈으로 확인했으면 완료. 파일 이름은 Step 3의 <code>MapperTest</code>(<code>load("…")</code>)와 Step 4의 <code>RepositoryTest</code>(<code>fixture("…")</code>)가 그대로 부르므로 바꾸지 마세요(<code>schedule_month.json</code>은 위 구장명 <code>jq</code> 확인과 Step 4의 프리페치 테스트가 씁니다). 라이브 파일은 경기 시간에만 받을 수 있는 13번째 파일이라, 없으면 Step 3에서 라이브 매핑 테스트 하나만 건너뛰고(<code>skipped</code>) 경기일로 미루면 됩니다. 이 파일들은 Step 3에서 <code>app/src/test/resources/fixtures/</code>로 옮깁니다.</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 터미널(`curl`·`jq`)로 API 응답을 fixture로 저장하는 스파이크라 **Jetpack Compose API가 등장하지 않습니다.**
+
 <div class="pager">
 <a href="#/labs/step-0">← Step 0</a>
 <a href="#/labs/step-2">Step 2 · 부트스트랩 →</a>

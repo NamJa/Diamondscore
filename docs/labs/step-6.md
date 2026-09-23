@@ -284,6 +284,40 @@ class MainActivity : ComponentActivity() {
 
 <div class="checkpoint"><span class="t"></span> 홈 화면(진행 중·예정·종료·연기 섹션, 원정 먼저, 라이브 빨강)이 뜨고, 날짜 화살표로 과거/미래가 즉시(네트워크 없이) 바뀌면 성공. 비행기 모드는 두 경우를 나눠 보세요 — 앱을 <strong>켜 둔 채</strong> 비행기 모드로 바꾸면 <strong>갱신 시도가 있을 때</strong> 캐시 위에 "마지막 갱신 n분 전" 배너가 뜹니다. 라이브 경기가 없으면 폴링이 없어 바꾸기만 해서는 30초가 지나도 배너가 안 뜨므로(2026-09-23 실측), ‹로 전날에 갔다가 "오늘"을 눌러 갱신을 일으킵니다(라이브 폴링 중이면 20초 안에 뜹니다). 앱을 <strong>껐다 켠 뒤</strong> 비행기 모드로 들어가면 <code>lastOk</code>가 프로세스 메모리에만 있어 사라지므로 같은 자리에 "캐시 표시 중"이 떠야 합니다(§1 warn 콜아웃). 캐시가 없는 날이면 둘 다 "다시 시도"입니다. 경기일이면 <strong>첫 경기 시작 전에</strong> 열어 두고 시작 시각이 지나면 스스로 LIVE로 바뀌는지, 30분 동안 자동 갱신되는지(목록 폴링 간격 18~22초), 홈 복귀 시 폴링이 멈췄다 돌아오면 즉시 재개되는지 확인하세요.</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 첫 화면(경기 목록)과 **라이브 폴링**을 붙입니다. 사이드 이펙트·상태 수집 API가 여기서 처음 나옵니다.
+
+**액티비티·ViewModel 연결**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `setContent { … }` (activity-compose) | `MainActivity`에서 Compose 트리의 루트를 `DiamondScoreTheme { GamesScreen(…) }`로 연다 |
+| `hiltViewModel()` (hilt-lifecycle-viewmodel-compose) | `GamesScreen`이 Hilt가 주입한 `GamesViewModel`을 받는다(Repository만 주입 — 규칙 1) |
+| `collectAsStateWithLifecycle()` (lifecycle-compose) | `StateFlow<GamesUiState>`를 Compose `State`로 바꾼다. 화면이 `STARTED` 밖이면 수집을 멈춰, `WhileSubscribed(5000)`과 함께 Room 구독도 쉬게 한다 |
+| `by` (`State` 위임) | `val ui by …`로 `.value` 없이 상태를 읽는다 |
+
+**사이드 이펙트·상태 생산**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `LaunchedEffect(ui.date)` | 진입 시와 날짜가 바뀔 때마다 실행되어, 오늘이면 1회 `refreshNow()` — 프리페치 일정 위에 최신 상태를 덮는다 |
+| `LaunchedEffect(hasLive, intervalMs)` | `LivePolling` 안에서 폴링 코루틴을 띄운다. 키가 바뀌면(라이브 없음 → 있음) 기존 루프를 취소하고 다시 시작한다 |
+| `LocalLifecycleOwner.current` + `repeatOnLifecycle(STARTED)` | 폴링 루프를 화면이 보일 때만 돌리고, 홈으로 나가면 멈췄다가 돌아오면 즉시 재개한다 |
+| `produceState(initial) { … }` | `rememberMinuteClock()` — 1분마다 현재 시각을 `State`로 내보내, 시작 시각이 지난 예정 경기를 폴링 대상으로 편입시킨다 |
+
+**레이아웃·컴포넌트**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `LazyColumn(contentPadding = PaddingValues(…))` | 경기 목록을 필요한 만큼만 그리는 세로 리스트 |
+| `item { }` / `items(list, key = { it.id })` | 섹션 라벨(진행 중/예정/종료)은 `item`, 경기 카드는 `items`. `key`로 폴링 갱신 때 카드가 재사용·재배치된다 |
+| `IconButton` | 날짜 ‹ ›, 설정 톱니 — 아이콘만 있는 버튼이라 `contentDescription`을 넘긴다 |
+| `TextButton` | 오늘이 아닐 때만 보이는 "오늘" 버튼 |
+| `Text` / `Row` / `Column` / `Modifier.background` | 날짜 바 구성, 화면 배경을 `colorScheme.background`로 칠한다(Scaffold는 Step 9에서) |
+| `MaterialTheme.typography.titleMedium` | 날짜 바의 "8월 2일 토" 스타일 |
+
 <div class="pager">
 <a href="#/labs/step-5">← Step 5</a>
 <a href="#/labs/step-7">Step 7 · 경기 상세 →</a>

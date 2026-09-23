@@ -270,6 +270,41 @@ Step 6에서 `core/ui`에 만든(`core/ui/LivePolling.kt`, package `com.diamonds
 <br><strong>예정 경기</strong>는 이닝 칸이 <strong>비어 있는 것이 정상</strong>입니다 — <code>boxscore</code>가 전부 <code>null</code>이라 <code>parseInnings</code>가 빈 리스트를 주고(Step 3), <code>LineScoreTable</code>은 최소 9열을 보장하므로(Step 5) 1~9열 머리글만 뜨고 칸과 R은 빈칸입니다. "경기 정보"의 경기장·선발 행은 예정 경기에도 채워져 있어야 합니다.
 <br><strong>진행 중 경기</strong>는 진입 시 <code>init { refresh() }</code>가 한 번 도니 진행된 이닝까지 숫자가 차 있어야 합니다. 진행 중인 회의 칸만 라이브 색이고(종료 경기에는 강조가 없습니다), 폰 폭에서도 팀 열과 R·H·E가 보이며 이닝만 가로로 밀립니다. 15초마다 점수가 바뀌고(2026-09-23 실측 간격 14.0~15.2초, 이때 목록 폴링은 멈춥니다), 홈으로 나가면 폴링이 멈춰야 합니다.</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 경기 상세 화면을 만듭니다. Step 6의 폴링 도구를 재사용하고, 종료 후 지연 재조회를 사이드 이펙트로 처리합니다.
+
+**ViewModel·상태**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `hiltViewModel<VM, Factory>(creationCallback = …)` | assisted 오버로드. nav 키 `GameDetailKey`를 타입 그대로 ViewModel 생성자에 넘긴다 |
+| `collectAsStateWithLifecycle()` | `observeGameDetail`의 `StateFlow<GameDetail?>`를 수집한다(`null` = 아직 로드 전 → `LoadingCards`) |
+| `rememberMinuteClock()` (Step 6, `produceState`) | 시작 시각이 지난 예정 경기인지 판정해 15초 폴링을 켠다 |
+
+**사이드 이펙트**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `LivePolling(…)` 안의 `LaunchedEffect` | `LIVE`(또는 시작 시각이 지난 예정)일 때만 15초 폴링, `FINAL`이 되면 키가 바뀌어 루프가 끝난다 |
+| `LaunchedEffect(status)` | 상태가 `FINAL`로 바뀐 순간 1회 재조회하고, `delay(10.minutes)` 뒤 투수 요약(`end_summary`)이 비어 있을 때만 한 번 더 조회한다. 화면을 떠나면 코루틴이 취소된다 |
+
+**레이아웃·컴포넌트**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `Scaffold(topBar = …) { pad -> }` | 상단 바(`DetailTopBar`)를 고정하고 본문에 `pad`를 적용한다. 배경·`LocalContentColor`도 여기서 공급된다 |
+| `Modifier.verticalScroll(rememberScrollState())` | 스코어·라인스코어·경기 정보를 한 화면에서 세로 스크롤 |
+| `Surface(color, shape)` | 상단 상태 칩("종료 · 연장 11회 · 9/10 · 광주")의 알약 배경 |
+| `IconButton` + `contentDescription` | 아이콘뿐인 뒤로 가기 버튼을 TalkBack이 "뒤로 가기"로 읽게 한다 |
+| `HorizontalDivider` | 경기 정보 행마다 헤어라인 |
+| `Text` (`style`, `fontWeight`, `color`) | 80sp Bebas 대형 스코어, 승리 팀 강조, 상태 칩 글자 |
+| `Column` / `Row` / `Spacer` / `Modifier.weight(1f)` | 원정·홈 스코어를 좌우 같은 폭으로 나누고 사이에 VS/FT를 둔다 |
+| `Arrangement.spacedBy` / `SpaceBetween` | 블록 간 16dp 간격, 정보 행의 키 ↔ 값 좌우 정렬 |
+| `RoundedCornerShape(999.dp)` | 칩의 완전한 알약 모양 |
+| `Color` 반환 `@Composable` 함수 | `statusColor()` — 테마 색을 읽어야 하므로 컴포저블로 둔다 |
+
 <div class="pager">
 <a href="#/labs/step-6">← Step 6</a>
 <a href="#/labs/step-8">Step 8 · 순위·팀·선수·즐겨찾기 →</a>

@@ -630,6 +630,76 @@ private fun StatLine(cells: List<String?>, weights: List<Float>, header: Boolean
 
 <div class="checkpoint"><span class="t"></span> Preview로 카드 4상태 · 라인스코어(11이닝) · 순위 행+진출선 · 상태 4종 · 아바타/기록 표가 모두 목업과 일치하면 컴포넌트 라이브러리 완성. 다크·라이트 Preview를 <strong>둘 다</strong> 띄워 색 상수가 남아 있지 않은지 확인하세요. 다크에서 예정 카드의 팀명·순위 승·패·무·빈 상태 제목이 안 보이면 Step 2 §10의 <code>LocalContentColor</code> 줄이 빠진 것입니다. 폰 폭(<code>widthDp = 360</code>)에서도 라인스코어의 팀 열과 R·H·E가 보여야 합니다. 다음 Step부터는 이들을 화면에 <strong>조립</strong>만 합니다.</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step은 화면에 조립할 **공통 컴포넌트**를 만듭니다. 레이아웃·Modifier·Material 컴포넌트 대부분이 여기서 처음 나옵니다.
+
+**런타임·Preview**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `@Composable` | `GameCard`·`LineScoreTable`·`StandingRow`·`TopBar` 등 모든 컴포넌트를 UI 함수로 선언한다 |
+| `@Preview(showBackground, backgroundColor, widthDp)` | 에뮬레이터 없이 카드 4상태·11이닝 라인스코어를 폰 폭(360dp)에서 확인한다 |
+| `LocalContentColor.current` | `DsIcon`의 기본 `tint`로 써서, 호출부가 색을 안 넘기면 주변 글자색을 따라가게 한다 |
+| `rememberInfiniteTransition` / `animateFloat` / `infiniteRepeatable` / `tween` / `RepeatMode.Reverse` | `pulseAlpha()` — LIVE 배지 점의 깜빡임과 스켈레톤의 은은한 명멸을 알파 왕복 애니메이션 하나로 만든다 |
+| `rememberScrollState()` | 라인스코어 이닝 영역의 가로 스크롤 위치를 기억한다 |
+
+**레이아웃**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `Column` / `Row` | 카드·행·표의 세로/가로 배치. 라인스코어는 팀 열·이닝 열·R·H·E 열을 `Column` 여러 개를 `Row`로 잇는다 |
+| `Box` | 셀 가운데 정렬(`Alignment.Center`), 그라디언트 보더 위에 카드 겹치기, 아바타 실루엣 위에 사진 겹치기 |
+| `Spacer` | 카드 내부 요소 간 고정 간격(`height(14.dp)` 등) |
+| `Arrangement.spacedBy` / `SpaceBetween` | 자식 간 균등 간격, 좌우 끝 정렬(배지 ↔ 도시명) |
+| `Alignment.CenterVertically` / `Bottom` / `CenterHorizontally` | 행 안 수직 정렬, 스코어의 베이스라인 맞춤, 빈/오류 상태 가운데 정렬 |
+| `ColumnScope` | `CenterColumn(content: @Composable ColumnScope.() -> Unit)`로 슬롯 안에서 `Column` 전용 Modifier를 쓸 수 있게 한다 |
+
+**Modifier**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `fillMaxWidth` / `fillMaxSize` | 카드·행을 가로 전체로, 빈/오류 상태를 화면 전체로 편다 |
+| `padding` | 카드 안쪽 여백. `LiveHeroCard`는 `padding(1.dp)`으로 그라디언트 보더 두께를 만든다 |
+| `width` / `height` / `size` / `heightIn(min = 48.dp)` | 라인스코어 셀 고정 폭(팀 64dp·이닝 34dp), 팀 컬러 닷, 순위 행의 48dp 터치 타깃 |
+| `weight(1f)` / `weight(1f, fill = false)` | 남은 폭을 나눠 갖는다. 라인스코어 이닝 영역은 `fill = false`라 좁은 폭에서만 줄어들고 R·H·E가 밀려나지 않는다 |
+| `matchParentSize` | 아바타의 `AsyncImage`를 실루엣 `Box`와 같은 크기로 겹친다 |
+| `background` (색·`Brush`) / `border` / `clip` | 카드 배경, 오프라인 배너의 테두리, 둥근 모서리·원형 자르기 |
+| `clickable` | 카드·순위 행을 눌러 상세로 가는 콜백을 연결한다 |
+| `horizontalScroll` | 라인스코어의 이닝 열만 가로로 스크롤시켜 폰 폭에서도 팀 열과 총계를 고정한다 |
+| `semantics { contentDescription = … }` | TalkBack이 라인스코어 셀을 "1회 초 원정 1점"으로 읽게 한다(미진행 셀은 읽지 않음) |
+| `clearAndSetSemantics { … }` | 스켈레톤 박스 4개를 각각 읽지 않고 "불러오는 중" 한 번만 읽게 자식 시맨틱을 지운다 |
+
+**Material 3 컴포넌트**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `Text` | 스코어·팀명·라벨 등 모든 글자. `style`·`color`·`textAlign`·`maxLines`로 목업 타이포를 맞춘다 |
+| `Icon` | `DsIcon`의 내부 구현. 장식 아이콘은 `contentDescription = null` |
+| `NavigationBar` / `NavigationBarItem` / `NavigationBarItemDefaults.colors` | 하단 탭 바 `DsBottomBar`. 배경을 앱 배경과 같게, 선택 인디케이터(pill)를 투명하게 바꾼다 |
+| `HorizontalDivider` | 카드 대신 쓰는 에디토리얼 헤어라인, 진출선 `LabeledDivider`의 양쪽 선 |
+| `Button` / `OutlinedButton` | 오류 상태의 "다시 시도", 빈 날의 "가장 가까운 경기일로" |
+| `Surface(onClick, shape, border)` | `SeasonChip` — 모양·테두리·클릭을 한 번에 가진 알약 칩 |
+
+**텍스트·그래픽·단위**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `buildAnnotatedString` / `withStyle` / `SpanStyle` / `AnnotatedString` | 종료 경기 한 줄에서 승리 팀만 굵게, 워드마크 끝 마침표만 레드로 칠한다 |
+| `TextAlign` / `FontWeight` | 순위 수치 가운데·우측 정렬, 합계 행 굵게 |
+| `Brush.linearGradient` | LIVE 카드의 레드 그라디언트 보더 |
+| `RoundedCornerShape` / `CircleShape` / `BorderStroke` | 카드·배지·칩의 모서리와 테두리, 원형 닷·아바타 |
+| `Color.copy(alpha = …)` / `Color.Transparent` / `Color.White` | 반투명 그라디언트 끝, 투명 배경, LIVE 배지의 흰 글자 |
+| `dp` / `sp` / `em` / `Dp` | 크기·폰트 크기·자간 단위, 셀 폭 파라미터 타입 |
+| `ImageVector` / `Icons.Outlined.*` | `DsIcon`이 받는 벡터 아이콘 타입과 Material 아이콘 세트(탭·빈 상태·오프라인) |
+
+**이미지 (Coil)**
+
+| API | 이 Step에서의 사용 목적 |
+|---|---|
+| `AsyncImage` (Coil Compose) | `PlayerAvatar`에서 https로 승격된 선수 사진을 비동기로 불러온다. 실패·`null`이면 밑에 깔린 실루엣이 보인다 |
+
 <div class="pager">
 <a href="#/labs/step-4">← Step 4</a>
 <a href="#/labs/step-6">Step 6 · 경기 목록 →</a>

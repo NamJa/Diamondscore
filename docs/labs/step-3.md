@@ -885,6 +885,11 @@ class MapperTest {
 
 <div class="checkpoint"><span class="t"></span> 테스트가 초록불이면 완료. 특히 <strong>연장 경기에서 10·11회 득점이 라인스코어에 나타나는지</strong>, <strong>취소 경기의 부분 점수가 사라지는지</strong>, <strong>투수/타자 record가 섞이지 않는지</strong>가 이 앱에서 가장 자주 깨지는 부분이니 반드시 통과시키세요. <code>load("…")</code>의 파일 이름은 Step 1에서 저장한 이름과 정확히 같아야 합니다 — 라이브 캡처(<code>schedule_day_live.json</code>)만 선택이라, 없으면 그 테스트 하나만 건너뜁니다(결과: 19개 중 <code>skipped 1</code>. 2026-09-23 18:45 라이브 캡처로 돌리면 19개 모두 통과).</div>
 
+<!-- appendix:compose-api -->
+## 별첨 · Compose API 사용 목적
+
+이 Step의 코드는 `data` 레이어(DTO·Retrofit·매퍼·단위 테스트)뿐이라 **Jetpack Compose API가 등장하지 않습니다.** 아키텍처 규칙 4(`data`는 Compose를 모른다) 그대로입니다 — 코드 블록의 `height`·`weight`는 선수 키·몸무게 DTO 필드, `getValue`는 Kotlin `Map.getValue`입니다.
+
 <div class="pager">
 <a href="#/labs/step-2">← Step 2</a>
 <a href="#/labs/step-4">Step 4 · Room·프리페치 →</a>
